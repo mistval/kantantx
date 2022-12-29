@@ -211,5 +211,11 @@ describe('Better-sqlite3 database tests', () => {
 
     expect(await database.getStringsNeedingTranslation('fr-FR', 100)).toHaveLength(1);
     expect(await database.getTranslatedStrings('fr-FR', 100)).toHaveLength(2);
+
+    const historyAll = await database.getHistory();
+    const historyGerman = await database.getHistory({ languageCode: 'de-DE' });
+
+    expect(historyAll).toHaveLength(7);
+    expect(historyGerman).toHaveLength(4);
   });
 });

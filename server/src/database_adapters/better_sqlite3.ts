@@ -307,6 +307,37 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     WHERE username = ?;
   `);
 
+  private readonly getHistoryStatement = this.db.prepare(`
+    SELECT
+      users.username AS username,
+      source_strings.value AS sourceValue,
+      documents.name AS documentName,
+      string_history.languageCode AS languageCode,
+      string_history.eventType AS eventType,
+      string_history.value AS value,
+      string_history.eventDate AS eventDate
+    FROM string_history
+    JOIN users ON users.id = string_history.userId
+    JOIN source_strings ON source_strings.id = string_history.sourceStringId
+    JOIN documents ON documents.id = source_strings.documentId
+    WHERE
+      (@stringId IS NULL OR source_strings.id = @stringId)
+      AND
+      (
+        @languageCode IS NULL
+        OR
+        (
+          string_history.languageCode = @languageCode
+          OR
+          string_history.languageCode = 'source'
+        )
+      )
+      AND
+      (@historyIdOffset IS NULL OR string_history.id < @historyIdOffset)
+    ORDER BY string_history.id DESC
+    LIMIT IIF(@limit IS NULL, 100, @limit);
+  `);
+
   private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
   private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents WHERE softDeleted = FALSE;');
   private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM user_languages;');
@@ -480,5 +511,16 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   adminUserExists() {
     return Boolean(this.adminUserQuery.get());
+  }
+
+  getHistory(options: { limit?: number; stringId?: number; languageCode?: string; historyIdOffset?: number } = {}) {
+    const { stringId, languageCode, historyIdOffset, limit } = options;
+
+    return this.getHistoryStatement.all({
+      stringId,
+      limit,
+      languageCode,
+      historyIdOffset
+    });
   }
 }
