@@ -89,15 +89,13 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly createUserStatement = this.db.prepare(`
     INSERT INTO users (username, passwordSalt, passwordHash, role, apiKey)
-    VALUES (?, ?, ?, ?, ?);
+    VALUES (?, ?, ?, ?, ?)
+    RETURNING id;
   `);
 
   private readonly insertUserLanguageCodeStatement = this.db.prepare(`
     INSERT INTO user_languages (userId, languageCode)
-    VALUES (
-      (SELECT id FROM users WHERE username = ?),
-      ?
-    );
+    VALUES (?, ?);
   `);
 
   private readonly setUserPasswordStatement = this.db.prepare(`
@@ -346,7 +344,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     WHERE username = ?;
   `);
 
-  private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = (SELECT id FROM users WHERE username = ?);`);
+  private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
   private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents WHERE softDeleted = FALSE;');
   private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM user_languages;');
   private readonly adminUserQuery = this.db.prepare('SELECT * FROM users WHERE role = \'admin\' LIMIT 1;');
@@ -391,13 +389,14 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   createUser(username: string, passwordSalt: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]) {
+    const { id } = this.createUserStatement.get(username, passwordSalt, passwordHash, role, apiKey);
+
     return this.db.transaction(() => {
-      const user = this.createUserStatement.run(username, passwordSalt, passwordHash, role, apiKey);
       for (const languageCode of languageCodes) {
-        this.insertUserLanguageCodeStatement.run(username, languageCode);
+        this.insertUserLanguageCodeStatement.run(id, languageCode);
       }
 
-      return Promise.resolve(Number(user.lastInsertRowid));
+      return Promise.resolve(id);
     })();
   }
 
@@ -412,11 +411,13 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   updateUserLanguages(username: string, languageCodes: string[]) {
+    const { id } = this.getUserByUsernameStatement.get(username);
+
     return this.db.transaction(() => {
-      this.deleteUserLanguagesStatement.run(username);
+      this.deleteUserLanguagesStatement.run(id);
 
       for (const languageCode of languageCodes) {
-        this.insertUserLanguageCodeStatement.run(username, languageCode);
+        this.insertUserLanguageCodeStatement.run(id, languageCode);
       }
 
       return Promise.resolve();

@@ -210,5 +210,6 @@ describe('Better-sqlite3 database tests', () => {
     await database.addTranslation(string1!.id, 'fr-FR', 'String 1 Updated FR', defaultAdminUsername);
 
     expect(await database.getStringsNeedingTranslation('fr-FR', 100)).toHaveLength(1);
+    expect(await database.getTranslatedStrings('fr-FR', 100)).toHaveLength(2);
   });
 });
