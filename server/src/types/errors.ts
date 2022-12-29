@@ -8,8 +8,14 @@ export class ApiError extends Error {
   }
 }
 
-export class UsernameExistsError extends ApiError {
-  constructor() {
-    super("USERNAME_EXISTS", 409, "Username already exists");
+export class ConflictError extends ApiError {
+  constructor(code: string, details?: string) {
+    super(code, 409, details);
+  }
+}
+
+export class NotFoundError extends ApiError {
+  constructor(code: string, details?: string) {
+    super(code, 404, details);
   }
 }

@@ -3,6 +3,7 @@ import { IDatabaseAdapter } from "../types/database_adapter";
 import { Role } from "../types/roles";
 import betterSqlite3 from "better-sqlite3";
 import { IUser } from "../types/user";
+import { ConflictError, NotFoundError } from '../types/errors';
 
 export class BetterSQLite3Database implements IDatabaseAdapter {
 
@@ -99,14 +100,16 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly setUserPasswordStatement = this.db.prepare(`
     UPDATE users
-    SET passwordSalt = ?, passwordHash = ?
-    WHERE username = ?;
+    SET
+      passwordSalt = ?,
+      passwordHash = ?
+    WHERE id = ?;
   `);
 
   private readonly setUserApiKeyStatement = this.db.prepare(`
     UPDATE users
     SET apiKey = ?
-    WHERE username = ?;
+    WHERE id = ?;
   `);
 
   private readonly upsertDocumentStatement = this.db.prepare(`
@@ -349,6 +352,12 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   createUser(username: string, passwordSalt: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]) {
+    const existingUser = this.getUserByUsernameStatement.get(username);
+
+    if (existingUser) {
+      throw new ConflictError('USER_EXISTS', 'A user with that username already exists');
+    }
+
     const { id } = this.createUserStatement.get(username, passwordSalt, passwordHash, role, apiKey);
 
     return this.db.transaction(() => {
@@ -361,23 +370,39 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   updateUserPassword(username: string, passwordSalt: string, passwordHash: string) {
-    this.setUserPasswordStatement.run(passwordSalt, passwordHash, username);
+    const existingUser = this.getUserByUsernameStatement.get(username);
+
+    if (!existingUser) {
+      throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
+    }
+
+    this.setUserPasswordStatement.run(passwordSalt, passwordHash, existingUser.id);
     return Promise.resolve();
   }
 
   updateUserApiKey(username: string, apiKey: string) {
-    this.setUserApiKeyStatement.run(apiKey, username);
+    const existingUser = this.getUserByUsernameStatement.get(username);
+
+    if (!existingUser) {
+      throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
+    }
+
+    this.setUserApiKeyStatement.run(apiKey, existingUser.id);
     return Promise.resolve();
   }
 
   updateUserLanguages(username: string, languageCodes: string[]) {
-    const { id } = this.getUserByUsernameStatement.get(username);
+    const existingUser = this.getUserByUsernameStatement.get(username);
+
+    if (!existingUser) {
+      throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
+    }
 
     return this.db.transaction(() => {
-      this.deleteUserLanguagesStatement.run(id);
+      this.deleteUserLanguagesStatement.run(existingUser.id);
 
       for (const languageCode of languageCodes) {
-        this.insertUserLanguageCodeStatement.run(id, languageCode);
+        this.insertUserLanguageCodeStatement.run(existingUser.id, languageCode);
       }
 
       return Promise.resolve();
