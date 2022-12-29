@@ -63,15 +63,14 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       sourceStringId INTEGER NOT NULL,
       languageCode TEXT NOT NULL,
       value TEXT NOT NULL,
-      createdDate DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
-      createdBy INTEGER NOT NULL,
+      valueLastUpdatedDate DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
       FOREIGN KEY (sourceStringId) REFERENCES source_strings(id),
-      FOREIGN KEY (createdBy) REFERENCES users(id)
+      UNIQUE(sourceStringId, languageCode)
     );
   `);
 
   // @ts-expect-error
-  private readonly createTranslatedStringsTableResult = this.db.exec(`
+  private readonly createStringHistoryTableResult = this.db.exec(`
     CREATE TABLE IF NOT EXISTS string_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sourceStringId INTEGER NOT NULL,
@@ -135,13 +134,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       value,
       userId
     )
-    VALUES (
-      ?,
-      ?,
-      ?,
-      ?,
-      ?
-    );
+    VALUES (?, ?, ?, ?, ?);
   `);
 
   private readonly getDocumentStringByKeyStatement = this.db.prepare(`
@@ -179,89 +172,74 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     RETURNING id;
   `);
 
+  private readonly upsertTranslationStatement = this.db.prepare(`
+    INSERT INTO translated_strings (sourceStringId, languageCode, value)
+    VALUES (?, ?, ?)
+    ON CONFLICT (sourceStringId, languageCode)
+    DO UPDATE SET
+      value = EXCLUDED.value,
+      valueLastUpdatedDate = IIF(
+        value = EXCLUDED.value,
+        valueLastUpdatedDate,
+        STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')
+      )
+    ;
+  `);
+
   private readonly getSourceStringsDocumentStatement = this.db.prepare(`
     SELECT
       source_strings.key,
       source_strings.value,
       source_strings.comment
     FROM source_strings
-    WHERE source_strings.documentId = (
-      SELECT id FROM documents WHERE name = ?
-    )
+    JOIN documents
+    ON documents.id = source_strings.documentId
+    WHERE documents.name = ?
     AND source_strings.softDeleted = FALSE
     ORDER BY source_strings.stringOrder ASC;
   `);
 
   private readonly getTranslatedStringsDocumentStatement = this.db.prepare(`
-    WITH most_recent_tx_id_per_source_string AS (
-      SELECT sourceStringId, MAX(translated_strings.id) AS translatedStringId
-      FROM translated_strings
-      INNER JOIN source_strings
-      ON source_strings.id = translated_strings.sourceStringId
-      INNER JOIN documents
-      ON documents.id = source_strings.documentId
-      WHERE
-        translated_strings.languageCode = ?
-        AND
-        documents.name = ?
-        AND
-        source_strings.softDeleted = FALSE
-      GROUP BY sourceStringId
-    )
     SELECT
       source_strings.key,
-      translated_strings.value,
-      source_strings.comment
-    FROM source_strings
-    INNER JOIN translated_strings
-    ON translated_strings.sourceStringId = source_strings.id
-    INNER JOIN most_recent_tx_id_per_source_string
-    ON
-      most_recent_tx_id_per_source_string.sourceStringId = source_strings.id
+      translated_strings.value
+    FROM translated_strings
+    INNER JOIN source_strings
+    ON source_strings.id = translated_strings.sourceStringId
+    INNER JOIN documents
+    ON documents.id = source_strings.documentId
+    WHERE
+      translated_strings.languageCode = ?
       AND
-      most_recent_tx_id_per_source_string.translatedStringId = translated_strings.id
+      documents.name = ?
+      AND
+      source_strings.softDeleted = FALSE
     ORDER BY source_strings.stringOrder ASC;
   `);
 
-  private readonly addTranslationStatement = this.db.prepare(`
-    INSERT INTO translated_strings (sourceStringId, languageCode, value, createdBy)
-    VALUES (?, ?, ?, ?);
-  `);
-
   private readonly getStringsNeedingTranslationStatement = this.db.prepare(`
-    WITH source_strings_that_have_a_translation AS (
-      SELECT DISTINCT sourceStringId
-      FROM translated_strings
-      WHERE languageCode = @languageCode
-    ), source_strings_that_do_not_have_a_translation AS (
-      SELECT id AS sourceStringId
-      FROM source_strings
-      WHERE id NOT IN (SELECT sourceStringId FROM source_strings_that_have_a_translation)
-    ), source_strings_with_old_translations AS (
-      SELECT sourceStringId
-      FROM translated_strings
-      JOIN source_strings
-      ON source_strings.id = translated_strings.sourceStringId
-      WHERE languageCode = @languageCode
-      GROUP BY sourceStringId
-      HAVING MAX(translated_strings.createdDate) < source_strings.valueLastUpdatedDate
-    )
     SELECT
       source_strings.id,
       source_strings.key,
       source_strings.value,
       source_strings.comment
     FROM source_strings
-    JOIN documents ON documents.id = source_strings.documentId
+    JOIN documents
+    ON documents.id = source_strings.documentId
+    LEFT JOIN translated_strings
+    ON
+      translated_strings.sourceStringId = source_strings.id
+      AND
+      translated_strings.languageCode = @languageCode
     WHERE
       source_strings.softDeleted = FALSE
       AND
       documents.softDeleted = FALSE
       AND
       (
-        source_strings.id IN (SELECT sourceStringId FROM source_strings_that_do_not_have_a_translation)
+        translated_strings.id IS NULL
         OR
-        source_strings.id IN (SELECT sourceStringId FROM source_strings_with_old_translations)
+        translated_strings.valueLastUpdatedDate < source_strings.valueLastUpdatedDate
       )
       AND
       (
@@ -290,33 +268,15 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       source_strings.softDeleted = FALSE
       AND
       documents.softDeleted = FALSE
-    GROUP BY source_strings.id
-    HAVING(
-      MAX(translated_strings.createdDate) >= source_strings.valueLastUpdatedDate
       AND
+      translated_strings.valueLastUpdatedDate >= source_strings.valueLastUpdatedDate
+      AND 
       (
         @sourceStringIdOffset IS NULL
         OR
         source_strings.id < @sourceStringIdOffset
       )
-    )
     ORDER BY source_strings.id DESC
-    LIMIT @limit;
-  `);
-
-  private readonly getTranslationHistoryStatement = this.db.prepare(`
-    SELECT
-      translated_strings.createdDate,
-      translated_strings.value,
-      users.username
-    FROM translated_strings
-    INNER JOIN users
-    ON users.id = translated_strings.createdBy
-    WHERE
-      translated_strings.sourceStringId = @sourceStringId
-      AND
-      translated_strings.languageCode = @languageCode
-    ORDER BY translated_strings.createdDate DESC
     LIMIT @limit;
   `);
 
@@ -472,7 +432,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     const user = this.getUserByUsernameStatement.get(createdBy);
 
     this.db.transaction(() => {
-      this.addTranslationStatement.run(sourceStringId, languageCode, value, user.id);
+      this.upsertTranslationStatement.run(sourceStringId, languageCode, value);
       this.insertHistoryEventStatement.run(sourceStringId, languageCode, 'newValue', value, user.id);
     })();
   }
@@ -491,10 +451,6 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   getTranslatedStrings(languageCode: string, limit: number, sourceStringIdOffset?: number) {
     return this.getTranslatedStringsStatement.all({ languageCode, sourceStringIdOffset, limit });
-  }
-
-  getTranslationHistory(sourceStringId: number, languageCode: string, limit: number) {
-    return this.getTranslationHistoryStatement.all({ sourceStringId, languageCode, limit });
   }
 
   adminUserExists() {
