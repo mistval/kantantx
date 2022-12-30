@@ -1,3 +1,5 @@
+import fetch from 'node-fetch';
+
 export class APIRequest {
   constructor(private readonly baseUri: string, private readonly apiKey?: string) {}
 
@@ -12,7 +14,7 @@ export class APIRequest {
     const response = await fetch(`${this.baseUri}/api/v1${relativePath}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : null,
+      body: body && JSON.stringify(body),
     });
 
     const responseBody = await response.json();

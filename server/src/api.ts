@@ -108,8 +108,8 @@ async function main() {
       const documentName = req.params['documentName'];
       assert(documentName, 'Document name is required');
       assertIsAuthenticatedRequest(req);
-      const result = await controller.updateSourceDocument(req.user.id, documentName, req.body as ISourceDocument);
-      return res.status(200).json(result);
+      await controller.updateSourceDocument(req.user.id, documentName, req.body as ISourceDocument);
+      return res.status(200).json({ success: true });
     } catch (err) {
       return next(err);
     }

@@ -9,7 +9,7 @@ interface IOptions {
   host: string;
   files: string[];
   format: string;
-  customFormatter?: string;
+  customFormatter?: string | undefined;
   force: boolean;
 }
 
@@ -24,7 +24,7 @@ interface IFormatHandler {
 }
 
 export default {
-  command: 'login',
+  command: 'uploadsource',
   desc: 'Upload source files. This command should be run in the root directory of your project.',
   builder: function (yargs: yargs.Argv<{}>) {
     return yargs
@@ -42,10 +42,9 @@ export default {
         choices: ['kantantx', 'custom'],
       })
       .option('custom-formatter', {
-        describe: 'The format to use for the uploaded files.',
-        demandOption: true,
+        describe: 'A path to a custom formatter module file.',
+        demandOption: false,
         type: 'string',
-        choices: ['kantantx', 'custom'],
       })
       .option('force', {
         describe: 'Ignore any warnings and continue with the upload.',
@@ -92,7 +91,12 @@ To continue with the upload as-is, use the --force option.
     for (const file of argv.files) {
       const content = fs.readFileSync(file, 'utf8');
       const parsedContent = formatter.parse(content);
-      await requester.doPutRequest(`/documents/${encodeURIComponent(file)}`, parsedContent);
+      const result = await requester.doPutRequest(`/documents/${encodeURIComponent(file)}/strings`, parsedContent);
+      if (result.success) {
+        console.log(`Uploaded ${file}`);
+      } else {
+        throw Error(`Failed to upload ${file}: ${result.status} ${JSON.stringify(result.responseBody)}`);
+      }
     }
   }
 };
