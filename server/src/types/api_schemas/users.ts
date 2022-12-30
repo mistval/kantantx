@@ -54,3 +54,13 @@ export const updateUserBody = Joi.alternatives<IUpdateUserRequest>().try(
   updateLanguagesBody,
   updateApiKeyBody,
 );
+
+export interface ILoginBody {
+  username: string;
+  password: string;
+};
+
+export const loginBody = Joi.object<ILoginBody>({
+  username: Joi.string().min(1).required(),
+  password: Joi.string().min(1).required(),
+});

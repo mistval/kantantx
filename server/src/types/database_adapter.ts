@@ -4,6 +4,7 @@ import { IPublicUser, ISensitiveUser } from "./user";
 
 export interface IDatabaseAdapter {
   createUser: (username: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]) => Promise<ISensitiveUser>;
+  getSensitiveUser: (username: string) => Promise<ISensitiveUser | undefined>;
   updateUserPassword: (username: string, passwordHash: string) => Promise<ISensitiveUser>;
   updateUserApiKey: (username: string, apiKey: string) => Promise<ISensitiveUser>;
   updateUserLanguages: (username: string, languageCodes: string[]) => Promise<ISensitiveUser>;

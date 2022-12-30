@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import assert from 'assert';
 import express from 'express';
 import morgan from 'morgan';
@@ -5,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { createValidator } from 'express-joi-validation';
 import { BetterSQLite3Database } from './database_adapters/better_sqlite3';
 import { initializeAdminUser } from './initialization';
-import { createUserBody, ICreateUserRequest, IUpdateUserRequest, updateUserBody } from './types/api_schemas/users';
+import { createUserBody, ICreateUserRequest, ILoginBody, IUpdateUserRequest, loginBody, updateUserBody } from './types/api_schemas/users';
 import { IDatabaseAdapter } from './types/database_adapter';
 import { createAttachUserMiddleware } from './middleware/authentication';
 import { adminOnly, checkTranslatorLanguage } from './middleware/authorization';
@@ -23,9 +24,26 @@ async function main() {
   const app = express();
   app.use(cookieParser());
   app.use(morgan('combined'));
-  app.use(createAttachUserMiddleware(database));
+  app.use(express.json());
 
   const validator = createValidator();
+
+  app.post('/api/v1/login', validator.body(loginBody), async (req, res, next) => {
+    try {
+      const user = await controller.validateLogin(req.body as ILoginBody);
+      res.cookie('apiKey', user.apiKey, { httpOnly: true, secure: true, sameSite: 'strict' });
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  app.use(createAttachUserMiddleware(database));
+
+  app.post('/api/v1/logout', validator.body(loginBody), async (_req, res) => {
+    res.clearCookie('apiKey');
+    return res.status(200).json({ success: true });
+  });
 
   app.post('/api/v1/users', adminOnly, validator.body(createUserBody), async (req, res, next) => {
     try {

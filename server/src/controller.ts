@@ -2,9 +2,11 @@ import assert from 'assert';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { ISourceDocument, IUpdateTranslationBody } from './types/api_schemas/strings';
-import { ICreateUserRequest, IUpdateUserRequest } from "./types/api_schemas/users";
+import { ICreateUserRequest, ILoginBody, IUpdateUserRequest } from "./types/api_schemas/users";
 import { IDatabaseAdapter } from "./types/database_adapter";
 import { UpdateUserOperation } from './types/enums';
+import { UnauthorizedError } from './types/errors';
+import { ISensitiveUser } from './types/user';
 
 const PASSWORD_SALT_ROUNDS = 10;
 
@@ -12,6 +14,22 @@ export class Controller {
   constructor(
     private readonly databaseAdapter: IDatabaseAdapter,
   ) {
+  }
+
+  async validateLogin(loginRequest: ILoginBody): Promise<ISensitiveUser> {
+    const user = await this.databaseAdapter.getSensitiveUser(loginRequest.username);
+
+    if (!user) {
+      throw new UnauthorizedError('INVALID_USERNAME');
+    }
+
+    const passwordMatches = await bcrypt.compare(loginRequest.password, user.passwordHash);
+
+    if (!passwordMatches) {
+      throw new UnauthorizedError('INVALID_PASSWORD');
+    }
+
+    return user;
   }
 
   async createUser(createOptions: ICreateUserRequest) {
