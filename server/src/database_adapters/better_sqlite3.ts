@@ -33,7 +33,7 @@ function parseRawDBUser(rawUser: IRawUser): ISensitiveUser {
 function parseRawDBString(rawString: IRawSourceString): ISourceString {
   return {
     ...rawString,
-    additionalFields: JSON.parse(rawString.additionalFields).map((field: any) => ({
+    additionalFields: rawString.additionalFields && JSON.parse(rawString.additionalFields).map((field: any) => ({
       ...field,
       uiHidden: Boolean(field.uiHidden),
     })),
@@ -272,20 +272,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly getTranslatedStringsDocumentStatement = this.db.prepare(`
     SELECT
-      source_strings.id,
       source_strings.key,
-      translated_strings.value,
-      (
-        SELECT
-        JSON_GROUP_ARRAY(
-          JSON_OBJECT('fieldName', fieldName, 'value', value, 'uiHidden', uiHidden)
-        )
-        FROM source_string_additional_fields
-        WHERE
-          sourceStringId = source_strings.id
-          AND
-          source_strings.softDeleted = FALSE
-      ) AS additionalFields
+      translated_strings.value
     FROM translated_strings
     INNER JOIN source_strings
     ON source_strings.id = translated_strings.sourceStringId
@@ -432,7 +420,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
   private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents;');
-  private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM user_languages;');
+  private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM translated_strings;');
   private readonly getAdminUserStatement = this.db.prepare(`SELECT * FROM users WHERE role = '${Role.ADMIN}' LIMIT 1;`);
   private readonly deleteDocumentStatement = this.db.prepare('DELETE FROM documents WHERE name = ?;');
   private readonly moveDocumentStatement = this.db.prepare('UPDATE documents SET name = ? WHERE name = ?;');

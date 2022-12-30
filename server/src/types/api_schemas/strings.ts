@@ -27,7 +27,7 @@ const sourceStringSchema = Joi.object<ISourceString>({
       value: Joi.string().required(),
       uiHidden: Joi.boolean().optional(),
     })
-  ).required(),
+  ).optional().default([]),
 });
 
 export const sourceDocumentBody = Joi.array().items(sourceStringSchema).required();

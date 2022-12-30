@@ -15,6 +15,12 @@ import { documentFetchQuery, getStringsQuerySchema, IGetStringsQuery, ISourceDoc
 import { assertIsAuthenticatedRequest } from './types/type_guards';
 import { ApiError } from './types/errors';
 import { IUpdateDocumentRequest, updateDocumentRequestSchema } from './types/api_schemas/documents';
+import { ISensitiveUser } from './types/user';
+
+function censorUser(user: ISensitiveUser) {
+  const { passwordHash, ...rest } = user;
+  return rest;
+}
 
 async function main() {
   const database: IDatabaseAdapter = new BetterSQLite3Database('./database.db');
@@ -23,8 +29,8 @@ async function main() {
   await initializeAdminUser(controller);
 
   const app = express();
-  app.use(cookieParser());
   app.use(morgan('combined'));
+  app.use(cookieParser());
   app.use(express.json());
 
   const validator = createValidator();
@@ -49,7 +55,7 @@ async function main() {
   app.post('/api/v1/users', adminOnly, validator.body(createUserBody), async (req, res, next) => {
     try {
       const result = await controller.createUser(req.body as ICreateUserRequest);
-      return res.status(201).json(result);
+      return res.status(201).json(censorUser(result));
     } catch (err) {
       return next(err);
     }
@@ -60,7 +66,7 @@ async function main() {
       const username = req.params['username'];
       assert(username, 'Username is required');
       const result = await controller.updateUser(username, req.body as IUpdateUserRequest);
-      return res.status(200).json(result);
+      return res.status(200).json(censorUser(result));
     } catch (err) {
       return next(err);
     }
@@ -162,13 +168,17 @@ async function main() {
     res.status(httpStatus).json({
       error: errorCode,
       details,
-    })
+    });
+
+    if (httpStatus === 500) {
+      console.error(err);
+    }
   });
 
   const port = process.env['PORT'] ?? 3000;
   
   app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`);
+    console.log(`Listening on port ${port}`);
   });
 }
 
