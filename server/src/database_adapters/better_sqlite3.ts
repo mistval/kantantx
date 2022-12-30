@@ -1,9 +1,28 @@
+import assert from 'assert';
 import _omitBy from 'lodash.omitby';
+import _omit from 'lodash.omit';
 import { IDatabaseAdapter } from "../types/database_adapter";
-import { Role } from "../types/roles";
+import { Role } from "../types/enums";
 import betterSqlite3 from "better-sqlite3";
-import { IUser } from "../types/user";
 import { ConflictError, NotFoundError } from '../types/errors';
+import { IPublicUser, ISensitiveUser } from '../types/user';
+import { ISourceDocument, IStringHistory, ITranslatedDocument } from '../types/api_schemas/strings';
+
+export interface IRawUser {
+  id: number;
+  username: string;
+  passwordHash: string;
+  role: Role;
+  apiKey: string;
+  languageCodes: string;
+}
+
+function parseUser(rawUser: IRawUser): ISensitiveUser {
+  return {
+    ...rawUser,
+    languageCodes: JSON.parse(rawUser.languageCodes),
+  };
+}
 
 export class BetterSQLite3Database implements IDatabaseAdapter {
 
@@ -14,7 +33,6 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
-      passwordSalt TEXT NOT NULL,
       passwordHash TEXT NOT NULL,
       role TEXT NOT NULL,
       apiKey TEXT NOT NULL UNIQUE
@@ -88,9 +106,9 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   /* QUERIES */
 
   private readonly createUserStatement = this.db.prepare(`
-    INSERT INTO users (username, passwordSalt, passwordHash, role, apiKey)
-    VALUES (?, ?, ?, ?, ?)
-    RETURNING id;
+    INSERT INTO users (username, passwordHash, role, apiKey)
+    VALUES (?, ?, ?, ?)
+    RETURNING *, '[]' AS languageCodes;
   `);
 
   private readonly insertUserLanguageCodeStatement = this.db.prepare(`
@@ -100,9 +118,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly setUserPasswordStatement = this.db.prepare(`
     UPDATE users
-    SET
-      passwordSalt = ?,
-      passwordHash = ?
+    SET passwordHash = ?
     WHERE id = ?;
   `);
 
@@ -321,7 +337,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     JOIN source_strings ON source_strings.id = string_history.sourceStringId
     JOIN documents ON documents.id = source_strings.documentId
     WHERE
-      (@stringId IS NULL OR source_strings.id = @stringId)
+      (@sourceStringId IS NULL OR source_strings.id = @sourceStringId)
       AND
       (
         @languageCode IS NULL
@@ -341,7 +357,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
   private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents WHERE softDeleted = FALSE;');
   private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM user_languages;');
-  private readonly adminUserQuery = this.db.prepare('SELECT * FROM users WHERE role = \'admin\' LIMIT 1;');
+  private readonly adminUserQuery = this.db.prepare(`SELECT * FROM users WHERE role = '${Role.ADMIN}' LIMIT 1;`);
 
   /* IMPLEMENTATION */
 
@@ -355,94 +371,92 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     this.db.close();
   }
 
-  getUserSecretsForPasswordLogin(username: string): Promise<{
-    passwordSalt: string;
-    passwordHash: string;
-    apiKey: string;
-  } | undefined> {
-    const user = this.getUserByUsernameStatement.get(username);
+  getSensitiveUser(username: string): Promise<ISensitiveUser | undefined> {
+    const user = this.getUserByUsernameStatement.get(username) as IRawUser;
     if (!user) {
       return Promise.resolve(undefined);
     }
 
-    return Promise.resolve(user);
+    return Promise.resolve(parseUser(user));
   }
 
-  getUserByApiKey(apiKey: string): Promise<IUser | undefined> {
+  getUserByApiKey(apiKey: string): Promise<IPublicUser | undefined> {
     const user = this.getUserByApiKeyStatement.get(apiKey);
     if (!user) {
       return Promise.resolve(undefined);
     }
 
-    return Promise.resolve({
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      languageCodes: JSON.parse(user.languageCodes),
-    });
+    return Promise.resolve(parseUser(user));
   }
 
-  createUser(username: string, passwordSalt: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]) {
-    const existingUser = this.getUserByUsernameStatement.get(username);
+  async createUser(username: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]): Promise<ISensitiveUser> {
+    const existingUser = this.getUserByUsernameStatement.get(username) as IRawUser;
 
     if (existingUser) {
       throw new ConflictError('USER_EXISTS', 'A user with that username already exists');
     }
 
-    const { id } = this.createUserStatement.get(username, passwordSalt, passwordHash, role, apiKey);
+    const { id } = this.createUserStatement.get(username, passwordHash, role, apiKey) as IRawUser;
 
-    return this.db.transaction(() => {
+    this.db.transaction(() => {
       for (const languageCode of languageCodes) {
         this.insertUserLanguageCodeStatement.run(id, languageCode);
       }
-
-      return Promise.resolve(id);
     })();
+
+    const sensitiveUser = await this.getSensitiveUser(username);
+    assert(sensitiveUser);
+    return sensitiveUser;
   }
 
-  updateUserPassword(username: string, passwordSalt: string, passwordHash: string) {
-    const existingUser = this.getUserByUsernameStatement.get(username);
+  async updateUserPassword(username: string, passwordHash: string): Promise<ISensitiveUser> {
+    const existingUser = this.getUserByUsernameStatement.get(username) as IRawUser;
 
     if (!existingUser) {
       throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
     }
 
-    this.setUserPasswordStatement.run(passwordSalt, passwordHash, existingUser.id);
-    return Promise.resolve();
+    this.setUserPasswordStatement.run(passwordHash, existingUser.id);
+    const sensitiveUser = await this.getSensitiveUser(username);
+    assert(sensitiveUser);
+    return sensitiveUser;
   }
 
-  updateUserApiKey(username: string, apiKey: string) {
-    const existingUser = this.getUserByUsernameStatement.get(username);
+  async updateUserApiKey(username: string, apiKey: string): Promise<ISensitiveUser> {
+    const existingUser = this.getUserByUsernameStatement.get(username) as IRawUser;
 
     if (!existingUser) {
       throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
     }
 
     this.setUserApiKeyStatement.run(apiKey, existingUser.id);
-    return Promise.resolve();
+    const sensitiveUser = await this.getSensitiveUser(username);
+    assert(sensitiveUser);
+    return sensitiveUser;
   }
 
-  updateUserLanguages(username: string, languageCodes: string[]) {
-    const existingUser = this.getUserByUsernameStatement.get(username);
+  async updateUserLanguages(username: string, languageCodes: string[]): Promise<ISensitiveUser> {
+    const existingUser = this.getUserByUsernameStatement.get(username) as IRawUser;
 
     if (!existingUser) {
       throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
     }
 
-    return this.db.transaction(() => {
+   this.db.transaction(() => {
       this.deleteUserLanguagesStatement.run(existingUser.id);
 
       for (const languageCode of languageCodes) {
         this.insertUserLanguageCodeStatement.run(existingUser.id, languageCode);
       }
-
-      return Promise.resolve();
     })();
+
+    const sensitiveUser = await this.getSensitiveUser(username);
+    assert(sensitiveUser);
+    return sensitiveUser;
   }
 
-  upsertSourceStrings(username: string, documentName: string, sourceStrings: Array<{ key: string; value: string; comment?: string; }>) {
+  updateSourceStrings(userId: number, documentName: string, sourceStrings: Array<{ key: string; value: string; comment?: string; }>) {
     const stringsWithOrder = sourceStrings.map((sourceString, index) => ({ ...sourceString, order: index }));
-    const user = this.getUserByUsernameStatement.get(username);
 
     this.db.transaction(() => {
       const { id: documentId } = this.upsertDocumentStatement.get(documentName);
@@ -460,37 +474,39 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         );
 
         if (!existingSourceString || existingSourceString.value !== sourceString.value) {
-          this.insertHistoryEventStatement.run(sourceStringId, 'source', 'newValue', sourceString.value, user?.id);
+          this.insertHistoryEventStatement.run(sourceStringId, 'source', 'newValue', sourceString.value, userId);
         } else if (existingSourceString.comment !== (sourceString.comment ?? null)) {
-          this.insertHistoryEventStatement.run(sourceStringId, 'source', 'commentChanged', sourceString.comment, user?.id);
+          this.insertHistoryEventStatement.run(sourceStringId, 'source', 'commentChanged', sourceString.comment, userId);
         }
       }
     })();
+
+    return Promise.resolve();
   }
 
-  getStrings(documentName: string, languageCode: string) {
+  getStrings(documentName: string, languageCode: string): Promise<ITranslatedDocument | ISourceDocument> {
     const results = languageCode === 'source'
       ? this.getSourceStringsDocumentStatement.all(documentName)
       : this.getTranslatedStringsDocumentStatement.all(languageCode, documentName);
 
-    return results.map(r => _omitBy(r, v => v === null));
+    return Promise.resolve(results.map(r => _omitBy(r, v => v === null)) as ITranslatedDocument | ISourceDocument);
   }
 
   getDocuments() {
-    return this.getDocumentNamesStatement.all();
+    return Promise.resolve(this.getDocumentNamesStatement.all());
   }
 
   getLanguageCodes() {
-    return this.getLanguageCodesStatement.all();
+    return Promise.resolve(this.getLanguageCodesStatement.all());
   }
 
-  addTranslation(sourceStringId: number, languageCode: string, value: string, createdBy: string) {
-    const user = this.getUserByUsernameStatement.get(createdBy);
-
+  updateTranslation(sourceStringId: number, languageCode: string, value: string, userId: number) {
     this.db.transaction(() => {
       this.upsertTranslationStatement.run(sourceStringId, languageCode, value);
-      this.insertHistoryEventStatement.run(sourceStringId, languageCode, 'newValue', value, user.id);
+      this.insertHistoryEventStatement.run(sourceStringId, languageCode, 'newValue', value, userId);
     })();
+
+    return Promise.resolve();
   }
 
   getStringsNeedingTranslation(languageCode: string, limit: number, sourceStringIdOffset?: number): Promise<Array<{
@@ -510,17 +526,19 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   adminUserExists() {
-    return Boolean(this.adminUserQuery.get());
+    return Promise.resolve(Boolean(this.adminUserQuery.get()));
   }
 
-  getHistory(options: { limit?: number; stringId?: number; languageCode?: string; historyIdOffset?: number } = {}) {
-    const { stringId, languageCode, historyIdOffset, limit } = options;
+  getStringHistory(options: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined } = {}): Promise<IStringHistory[]> {
+    const { sourceStringId, languageCode, historyIdOffset, limit } = options;
 
-    return this.getHistoryStatement.all({
-      stringId,
-      limit,
-      languageCode,
-      historyIdOffset
-    });
+    return Promise.resolve(
+      this.getHistoryStatement.all({
+        sourceStringId,
+        limit,
+        languageCode,
+        historyIdOffset
+      }),
+    );
   }
 }

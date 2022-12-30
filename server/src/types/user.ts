@@ -1,8 +1,12 @@
-import { Role } from "./roles";
+import { Role } from "./enums";
 
-export interface IUser {
+export interface ISensitiveUser {
   id: number;
   username: string;
+  passwordHash: string;
   role: Role;
+  apiKey: string;
   languageCodes: string[];
 }
+
+export type IPublicUser = Omit<ISensitiveUser, 'passwordHash' | 'apiKey'>;

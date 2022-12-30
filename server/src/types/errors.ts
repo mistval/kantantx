@@ -19,3 +19,21 @@ export class NotFoundError extends ApiError {
     super(code, 404, details);
   }
 }
+
+export class UnauthorizedError extends ApiError {
+  constructor(code: string, details?: string) {
+    super(code, 401, details);
+  }
+}
+
+export class ForbiddenError extends ApiError {
+  constructor(code: string, details?: string) {
+    super(code, 403, details);
+  }
+}
+
+export class BadRequestError extends ApiError {
+  constructor(code: string, details?: string) {
+    super(code, 400, details);
+  }
+}
