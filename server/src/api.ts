@@ -15,9 +15,9 @@ import { documentFetchQuery, getStringsQuerySchema, IGetStringsQuery, ISourceDoc
 import { assertIsAuthenticatedRequest } from './types/type_guards';
 import { ApiError } from './types/errors';
 import { IUpdateDocumentRequest, updateDocumentRequestSchema } from './types/api_schemas/documents';
-import { ISensitiveUser } from './types/user';
+import { IPublicSensitiveUser, ISensitiveUser } from './types/user';
 
-function censorUser(user: ISensitiveUser) {
+function censorUser(user: ISensitiveUser): IPublicSensitiveUser {
   const { passwordHash, ...rest } = user;
   return rest;
 }
