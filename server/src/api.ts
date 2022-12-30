@@ -12,7 +12,7 @@ import { adminOnly, checkTranslatorLanguage } from './middleware/authorization';
 import { Controller } from './controller';
 import { documentFetchQuery, ISourceDocument, IUpdateTranslationBody, sourceDocumentBody, updateTranslationBody } from './types/api_schemas/strings';
 import { assertIsAuthenticatedRequest } from './types/type_guards';
-import { BadRequestError } from './types/errors';
+import { ApiError, BadRequestError } from './types/errors';
 
 async function main() {
   const database: IDatabaseAdapter = new BetterSQLite3Database('./database.db');
@@ -116,6 +116,17 @@ async function main() {
     } catch (err) {
       return next(err);
     }    
+  });
+
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const httpStatus = err instanceof ApiError ? err.httpStatus : 500;
+    const errorCode = err instanceof ApiError ? err.code : 'INTERNAL_SERVER_ERROR';
+    const details = err instanceof ApiError ? err.details : undefined;
+
+    res.status(httpStatus).json({
+      error: errorCode,
+      details,
+    })
   });
 
   const port = process.env['PORT'] ?? 3000;

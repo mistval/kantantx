@@ -1,10 +1,10 @@
 export class ApiError extends Error {
   constructor(
-    public code: string,
-    public status: number,
-    public details?: string
+    public readonly code: string,
+    public readonly httpStatus: number,
+    public readonly details?: string
   ) {
-    super(`APIError ${status} ${code}: ${details}`);
+    super(`APIError ${httpStatus} ${code}: ${details}`);
   }
 }
 
