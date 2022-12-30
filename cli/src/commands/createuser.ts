@@ -8,7 +8,7 @@ interface IOptions {
   role: string;
   host: string;
   apikey: string;
-  languagecodes: string[];
+  languageCodes: string[];
 }
 
 export default {
@@ -35,7 +35,7 @@ export default {
         choices: ['admin', 'translator'],
         type: 'string'
       })
-      .option('languagecodes', {
+      .option('language-codes', {
         alias: 'l',
         describe: 'The language codes the user can translate (not required for admin users)',
         type: 'string',
@@ -51,7 +51,7 @@ export default {
       username: argv.username,
       password: argv.password,
       role: argv.role.toUpperCase(),
-      languageCodes: argv.languagecodes,
+      languageCodes: argv.languageCodes,
     });
 
     if (result.success) {

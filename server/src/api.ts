@@ -14,6 +14,7 @@ import { Controller } from './controller';
 import { documentFetchQuery, getStringsQuerySchema, IGetStringsQuery, ISourceDocument, IStringHistoryQuery, IUpdateTranslationBody, sourceDocumentBody, stringHistoryQuery, updateTranslationBody } from './types/api_schemas/strings';
 import { assertIsAuthenticatedRequest } from './types/type_guards';
 import { ApiError } from './types/errors';
+import { IUpdateDocumentRequest, updateDocumentRequestSchema } from './types/api_schemas/documents';
 
 async function main() {
   const database: IDatabaseAdapter = new BetterSQLite3Database('./database.db');
@@ -69,6 +70,28 @@ async function main() {
     try {
       const result = await controller.getDocuments();
       return res.status(200).json(result);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  app.delete('/api/v1/documents/:documentName', adminOnly, async (req, res, next) => {
+    try {
+      const documentName = req.params['documentName'];
+      assert(documentName, 'Document name is required');
+      await controller.deleteDocument(documentName);
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  app.patch('/api/v1/documents/:documentName', adminOnly, validator.body(updateDocumentRequestSchema), async (req, res, next) => {
+    try {
+      const documentName = req.params['documentName'];
+      assert(documentName, 'Document name is required');
+      await controller.updateDocument(documentName, req.body as IUpdateDocumentRequest);
+      return res.status(200).json({ success: true });
     } catch (err) {
       return next(err);
     }

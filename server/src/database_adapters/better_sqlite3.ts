@@ -17,10 +17,26 @@ export interface IRawUser {
   languageCodes: string;
 }
 
-function parseUser(rawUser: IRawUser): ISensitiveUser {
+export interface IRawSourceString {
+  key: string;
+  value: string;
+  additionalFields: string;
+}
+
+function parseRawDBUser(rawUser: IRawUser): ISensitiveUser {
   return {
     ...rawUser,
     languageCodes: JSON.parse(rawUser.languageCodes),
+  };
+}
+
+function parseRawDBString(rawString: IRawSourceString): ISourceString {
+  return {
+    ...rawString,
+    additionalFields: JSON.parse(rawString.additionalFields).map((field: any) => ({
+      ...field,
+      uiHidden: Boolean(field.uiHidden),
+    })),
   };
 }
 
@@ -54,8 +70,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   private readonly createDocumentsTableResult = this.db.exec(`
     CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      softDeleted INTEGER NOT NULL DEFAULT FALSE
+      name TEXT NOT NULL UNIQUE
     );
   `);
 
@@ -66,12 +81,25 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       documentId INTEGER NOT NULL,
       key TEXT NOT NULL,
       value TEXT NOT NULL,
-      comment TEXT,
       valueLastUpdatedDate DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
       softDeleted INTEGER NOT NULL DEFAULT FALSE,
       stringOrder INTEGER NOT NULL,
-      FOREIGN KEY (documentId) REFERENCES documents(id),
+      FOREIGN KEY (documentId) REFERENCES documents(id) ON DELETE CASCADE,
       UNIQUE (documentId, key)
+    );
+  `);
+
+  // @ts-expect-error
+  private readonly createSourceStringsAdditionalFieldsTableResult = this.db.exec(`
+    CREATE TABLE IF NOT EXISTS source_string_additional_fields (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sourceStringId INTEGER NOT NULL,
+      fieldName TEXT NOT NULL,
+      value TEXT NOT NULL,
+      softDeleted INTEGER NOT NULL DEFAULT FALSE,
+      uiHidden INTEGER NOT NULL DEFAULT FALSE,
+      FOREIGN KEY (sourceStringId) REFERENCES source_strings(id) ON DELETE CASCADE,
+      UNIQUE (sourceStringId, fieldName)
     );
   `);
 
@@ -83,7 +111,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       languageCode TEXT NOT NULL,
       value TEXT NOT NULL,
       valueLastUpdatedDate DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
-      FOREIGN KEY (sourceStringId) REFERENCES source_strings(id),
+      FOREIGN KEY (sourceStringId) REFERENCES source_strings(id) ON DELETE CASCADE,
       UNIQUE(sourceStringId, languageCode)
     );
   `);
@@ -98,7 +126,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       value TEXT NOT NULL,
       eventDate DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
       userId INTEGER NOT NULL,
-      FOREIGN KEY (sourceStringId) REFERENCES source_strings(id),
+      FOREIGN KEY (sourceStringId) REFERENCES source_strings(id) ON DELETE CASCADE,
       FOREIGN KEY (userId) REFERENCES users(id)
     );
   `);
@@ -131,17 +159,21 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   private readonly upsertDocumentStatement = this.db.prepare(`
     INSERT INTO documents (name)
     VALUES (?)
-    ON CONFLICT (name) DO UPDATE SET
-      name = EXCLUDED.name,
-      softDeleted = FALSE
+    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
     RETURNING id;
   `);
 
   private readonly softDeleteDocumentSourceStringsStatement = this.db.prepare(`
     UPDATE source_strings
     SET softDeleted = TRUE
-    WHERE documentId = (
-      SELECT id FROM documents WHERE name = ?
+    WHERE documentId = ?;
+  `);
+
+  private readonly softDeleteDocumentSourceStringAdditionalFieldsStatement = this.db.prepare(`
+    UPDATE source_string_additional_fields
+    SET softDeleted = TRUE
+    WHERE sourceStringId IN (
+      SELECT id FROM source_strings WHERE documentId = ?
     );
   `);
 
@@ -159,7 +191,17 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   private readonly getDocumentStringByKeyStatement = this.db.prepare(`
     SELECT
       source_strings.value,
-      source_strings.comment
+      (
+        SELECT
+        JSON_GROUP_ARRAY(
+          JSON_OBJECT('fieldName', fieldName, 'value', value, 'uiHidden', uiHidden)
+        )
+        FROM source_string_additional_fields
+        WHERE
+          sourceStringId = source_strings.id
+          AND
+          source_strings.softDeleted = FALSE
+      ) AS additionalFields
     FROM source_strings
     WHERE
       source_strings.documentId = ?
@@ -169,8 +211,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   `);
 
   private readonly upsertSourceStringStatement = this.db.prepare(`
-    INSERT INTO source_strings (documentId, key, value, comment, stringOrder)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO source_strings (documentId, key, value, stringOrder)
+    VALUES (?, ?, ?, ?)
     ON CONFLICT (documentId, key)
     DO UPDATE SET
       value = EXCLUDED.value,
@@ -179,10 +221,20 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         valueLastUpdatedDate,
         STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')
       ),
-      comment = EXCLUDED.comment,
       softDeleted = FALSE,
       stringOrder = EXCLUDED.stringOrder
     RETURNING id;
+  `);
+
+  private readonly upsertAdditionalFieldStatement = this.db.prepare(`
+    INSERT INTO source_string_additional_fields (sourceStringId, fieldName, value, uiHidden)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT (sourceStringId, fieldName)
+    DO UPDATE SET
+      value = EXCLUDED.value,
+      uiHidden = EXCLUDED.uiHidden,
+      softDeleted = FALSE
+    ;
   `);
 
   private readonly upsertTranslationStatement = this.db.prepare(`
@@ -199,7 +251,17 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     SELECT
       source_strings.key,
       source_strings.value,
-      source_strings.comment
+      (
+        SELECT
+        JSON_GROUP_ARRAY(
+          JSON_OBJECT('fieldName', fieldName, 'value', value, 'uiHidden', uiHidden)
+        )
+        FROM source_string_additional_fields
+        WHERE
+          sourceStringId = source_strings.id
+          AND
+          source_strings.softDeleted = FALSE
+      ) AS additionalFields
     FROM source_strings
     JOIN documents
     ON documents.id = source_strings.documentId
@@ -210,8 +272,20 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly getTranslatedStringsDocumentStatement = this.db.prepare(`
     SELECT
+      source_strings.id,
       source_strings.key,
-      translated_strings.value
+      translated_strings.value,
+      (
+        SELECT
+        JSON_GROUP_ARRAY(
+          JSON_OBJECT('fieldName', fieldName, 'value', value, 'uiHidden', uiHidden)
+        )
+        FROM source_string_additional_fields
+        WHERE
+          sourceStringId = source_strings.id
+          AND
+          source_strings.softDeleted = FALSE
+      ) AS additionalFields
     FROM translated_strings
     INNER JOIN source_strings
     ON source_strings.id = translated_strings.sourceStringId
@@ -231,10 +305,18 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       source_strings.id,
       source_strings.key,
       source_strings.value,
-      source_strings.comment
+      (
+        SELECT
+        JSON_GROUP_ARRAY(
+          JSON_OBJECT('fieldName', fieldName, 'value', value, 'uiHidden', uiHidden)
+        )
+        FROM source_string_additional_fields
+        WHERE
+          sourceStringId = source_strings.id
+          AND
+          source_strings.softDeleted = FALSE
+      ) AS additionalFields
     FROM source_strings
-    JOIN documents
-    ON documents.id = source_strings.documentId
     LEFT JOIN translated_strings
     ON
       translated_strings.sourceStringId = source_strings.id
@@ -242,8 +324,6 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       translated_strings.languageCode = @languageCode
     WHERE
       source_strings.softDeleted = FALSE
-      AND
-      documents.softDeleted = FALSE
       AND
       (
         translated_strings.id IS NULL
@@ -265,18 +345,24 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       source_strings.id,
       source_strings.key,
       translated_strings.value,
-      source_strings.comment
+      (
+        SELECT
+        JSON_GROUP_ARRAY(
+          JSON_OBJECT('fieldName', fieldName, 'value', value, 'uiHidden', uiHidden)
+        )
+        FROM source_string_additional_fields
+        WHERE
+          sourceStringId = source_strings.id
+          AND
+          source_strings.softDeleted = FALSE
+      ) AS additionalFields
     FROM source_strings
-    INNER JOIN documents
-    ON documents.id = source_strings.documentId
     LEFT JOIN translated_strings
     ON translated_strings.sourceStringId = source_strings.id
     WHERE
       languageCode = @languageCode
       AND
       source_strings.softDeleted = FALSE
-      AND
-      documents.softDeleted = FALSE
       AND
       translated_strings.valueLastUpdatedDate >= source_strings.valueLastUpdatedDate
       AND 
@@ -345,9 +431,11 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   `);
 
   private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
-  private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents WHERE softDeleted = FALSE;');
+  private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents;');
   private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM user_languages;');
-  private readonly adminUserQuery = this.db.prepare(`SELECT * FROM users WHERE role = '${Role.ADMIN}' LIMIT 1;`);
+  private readonly getAdminUserStatement = this.db.prepare(`SELECT * FROM users WHERE role = '${Role.ADMIN}' LIMIT 1;`);
+  private readonly deleteDocumentStatement = this.db.prepare('DELETE FROM documents WHERE name = ?;');
+  private readonly moveDocumentStatement = this.db.prepare('UPDATE documents SET name = ? WHERE name = ?;');
 
   /* IMPLEMENTATION */
 
@@ -367,7 +455,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       return Promise.resolve(undefined);
     }
 
-    return Promise.resolve(parseUser(user));
+    return Promise.resolve(parseRawDBUser(user));
   }
 
   getUserByApiKey(apiKey: string): Promise<IPublicUser | undefined> {
@@ -376,7 +464,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       return Promise.resolve(undefined);
     }
 
-    return Promise.resolve(parseUser(user));
+    return Promise.resolve(parseRawDBUser(user));
   }
 
   async createUser(username: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]): Promise<ISensitiveUser> {
@@ -445,12 +533,13 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return sensitiveUser;
   }
 
-  updateSourceStrings(userId: number, documentName: string, sourceStrings: Array<{ key: string; value: string; comment?: string; }>) {
+  updateSourceStrings(userId: number, documentName: string, sourceStrings: Array<ISourceString>) {
     const stringsWithOrder = sourceStrings.map((sourceString, index) => ({ ...sourceString, order: index }));
+    const { id: documentId } = this.upsertDocumentStatement.get(documentName);
 
     this.db.transaction(() => {
-      const { id: documentId } = this.upsertDocumentStatement.get(documentName);
-      this.softDeleteDocumentSourceStringsStatement.run(documentName);
+      this.softDeleteDocumentSourceStringAdditionalFieldsStatement.run(documentId);
+      this.softDeleteDocumentSourceStringsStatement.run(documentId);
 
       for (const sourceString of stringsWithOrder) {
         const existingSourceString = this.getDocumentStringByKeyStatement.get(documentId, sourceString.key);
@@ -459,14 +548,20 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
           documentId,
           sourceString.key,
           sourceString.value,
-          sourceString.comment,
           sourceString.order,
         );
 
+        for (const additionalField of sourceString.additionalFields ?? []) {
+          this.upsertAdditionalFieldStatement.run(
+            sourceStringId,
+            additionalField.fieldName,
+            additionalField.value,
+            additionalField.uiHidden ? 1 : 0,
+          );
+        }
+
         if (!existingSourceString || existingSourceString.value !== sourceString.value) {
           this.insertHistoryEventStatement.run(sourceStringId, 'source', 'newValue', sourceString.value, userId);
-        } else if (existingSourceString.comment !== (sourceString.comment ?? null)) {
-          this.insertHistoryEventStatement.run(sourceStringId, 'source', 'commentChanged', sourceString.comment, userId);
         }
       }
     })();
@@ -479,7 +574,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       ? this.getSourceStringsDocumentStatement.all(documentName)
       : this.getTranslatedStringsDocumentStatement.all(languageCode, documentName);
 
-    return Promise.resolve(results.map(r => _omitBy(r, v => v === null)) as ITranslatedDocument | ISourceDocument);
+    return Promise.resolve(results.map(r => parseRawDBString(r)) as ITranslatedDocument | ISourceDocument);
   }
 
   getDocuments() {
@@ -502,19 +597,19 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   getStringsNeedingTranslation(languageCode: string, limit?: number, sourceStringIdOffset?: number): Promise<Array<ISourceString & { id: number }>> {
     const results = this.getStringsNeedingTranslationStatement.all({ languageCode, sourceStringIdOffset, limit });
     return Promise.resolve(
-      results.map((r) => _omitBy(r, (v) => v === null)) as any
+      results.map((r) => parseRawDBString(r)) as any
     );
   }
 
   getTranslatedStrings(languageCode: string, limit?: number, sourceStringIdOffset?: number): Promise<Array<ISourceString & { id: number }>> {
     const results = this.getTranslatedStringsStatement.all({ languageCode, sourceStringIdOffset, limit });
     return Promise.resolve(
-      results.map((r) => _omitBy(r, (v) => v === null)) as any
+      results.map((r) => parseRawDBString(r)) as any
     );
   }
 
   adminUserExists() {
-    return Promise.resolve(Boolean(this.adminUserQuery.get()));
+    return Promise.resolve(Boolean(this.getAdminUserStatement.get()));
   }
 
   getStringHistory(options: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined } = {}): Promise<IStringHistory[]> {
@@ -528,5 +623,31 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         historyIdOffset
       }),
     );
+  }
+
+  moveDocument(fromName: string, toName: string) {
+    const existingDocuments = this.getDocumentNamesStatement.all();
+    
+    if (existingDocuments.some(d => d.name === toName)) {
+      throw new ConflictError('DOCUMENT_EXISTS', 'A document with the target name already exists.');
+    }
+
+    if (!existingDocuments.some(d => d.name === fromName)) {
+      throw new NotFoundError('DOCUMENT_NOT_FOUND', 'A document with the source name does not exist.');
+    }
+
+    this.moveDocumentStatement.run(toName, fromName);
+    return Promise.resolve();
+  }
+
+  deleteDocument(documentName: string) {
+    const existingDocuments = this.getDocumentNamesStatement.all();
+
+    if (!existingDocuments.some(d => d.name === documentName)) {
+      throw new NotFoundError('DOCUMENT_NOT_FOUND', 'A document with the source name does not exist.');
+    }
+
+    this.deleteDocumentStatement.run(documentName);
+    return Promise.resolve();
   }
 }

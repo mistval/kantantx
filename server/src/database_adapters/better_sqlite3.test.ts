@@ -91,9 +91,9 @@ describe('Better-sqlite3 database tests', () => {
     await createDefaultAdmin();
 
     const strings = [
-      { key: 'string1', value: 'String 1' },
-      { key: 'string2', value: 'String 2' },
-      { key: 'string3', value: 'String 2', comment: 'Comment 3' },
+      { key: 'string1', value: 'String 1', additionalFields: [] },
+      { key: 'string2', value: 'String 2', additionalFields: [] },
+      { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3', uiHidden: false }] },
     ];
 
     await database.updateSourceStrings(1, 'testdocument', strings);
@@ -106,14 +106,14 @@ describe('Better-sqlite3 database tests', () => {
     await createDefaultAdmin();
 
     const strings1 = [
-      { key: 'string1', value: 'String 1' },
-      { key: 'string2', value: 'String 2' },
-      { key: 'string3', value: 'String 2', comment: 'Comment 3' },
+      { key: 'string1', value: 'String 1', additionalFields: [] },
+      { key: 'string2', value: 'String 2', additionalFields: [] },
+      { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3' }] },
     ];
 
     const strings2 = [
-      { key: 'string1', value: 'String 1' },
-      { key: 'string2', value: 'String XYZ' },
+      { key: 'string1', value: 'String 1', additionalFields: [] },
+      { key: 'string2', value: 'String XYZ', additionalFields: [] },
     ];
 
     await database.updateSourceStrings(1, 'testdocument', strings1);
@@ -130,7 +130,7 @@ describe('Better-sqlite3 database tests', () => {
     const strings1 = [
       { key: 'string1', value: 'String 1' },
       { key: 'string2', value: 'String 2' },
-      { key: 'string3', value: 'String 2', comment: 'Comment 3' },
+      { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3' }] },
     ];
 
     await database.updateSourceStrings(1, 'testdocument', strings1);
@@ -144,9 +144,9 @@ describe('Better-sqlite3 database tests', () => {
     await createDefaultAdmin();
 
     const strings1 = [
-      { key: 'string1', value: 'String 1' },
-      { key: 'string2', value: 'String 2' },
-      { key: 'string3', value: 'String 2', comment: 'Comment 3' },
+      { key: 'string1', value: 'String 1', additionalFields: [] },
+      { key: 'string2', value: 'String 2', additionalFields: [] },
+      { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3', uiHidden: false }] },
     ];
 
     await database.updateSourceStrings(1, 'testdocument', strings1);
@@ -162,7 +162,7 @@ describe('Better-sqlite3 database tests', () => {
     const strings1 = [
       { key: 'string1', value: 'String 1' },
       { key: 'string2', value: 'String 2' },
-      { key: 'string3', value: 'String 2', comment: 'Comment 3' },
+      { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3' }] },
     ];
 
     await database.createUser('user1', 'hash', Role.TRANSLATOR, 'apikey1', ['en', 'fr']);
@@ -184,7 +184,7 @@ describe('Better-sqlite3 database tests', () => {
     const initialSourceStrings = [
       { key: 'string1', value: 'String 1' },
       { key: 'string2', value: 'String 2' },
-      { key: 'string3', value: 'String 3', comment: 'Comment 3' },
+      { key: 'string3', value: 'String 3', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3' }] },
     ];
 
     await database.updateSourceStrings(1, 'testdocument', initialSourceStrings);

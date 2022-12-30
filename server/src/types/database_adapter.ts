@@ -11,8 +11,10 @@ export interface IDatabaseAdapter {
   adminUserExists: () => Promise<boolean>;
   getUserByApiKey: (apiKey: string) => Promise<IPublicUser | undefined>;
   getDocuments: () => Promise<Array<{ name: string }>>;
+  moveDocument: (fromName: string, toName: string) => Promise<void>;
+  deleteDocument: (name: string) => Promise<void>;
   getLanguageCodes: () => Promise<Array<{ languageCode: string }>>;
-  updateSourceStrings: (userId: number, documentName: string, sourceStrings: Array<{ key: string; value: string; comment?: string; }>) => Promise<void>;
+  updateSourceStrings: (userId: number, documentName: string, sourceStrings: Array<ISourceString>) => Promise<void>;
   getStrings: (documentName: string, languageCode: string) => Promise<ITranslatedDocument | ISourceDocument>;
   updateTranslation: (sourceStringId: number, languageCode: string, value: string, userId: number) => Promise<void>;
   getStringHistory: (options?: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined }) => Promise<IStringHistory[]>;

@@ -3,7 +3,11 @@ import Joi from "joi";
 export interface ISourceString {
   key: string;
   value: string;
-  comment?: string;
+  additionalFields?: Array<{
+    fieldName: string;
+    value: string;
+    uiHidden?: boolean;
+  }>;
 };
 
 export interface ITranslatedString {
@@ -17,7 +21,13 @@ export type ITranslatedDocument = ITranslatedString[];
 const sourceStringSchema = Joi.object<ISourceString>({
   key: Joi.string().min(1).required(),
   value: Joi.string().required(),
-  comment: Joi.string().optional(),
+  additionalFields: Joi.array().items(
+    Joi.object({
+      fieldName: Joi.string().min(1).required(),
+      value: Joi.string().required(),
+      uiHidden: Joi.boolean().optional(),
+    })
+  ).required(),
 });
 
 export const sourceDocumentBody = Joi.array().items(sourceStringSchema).required();

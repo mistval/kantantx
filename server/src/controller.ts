@@ -1,6 +1,7 @@
 import assert from 'assert';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { IUpdateDocumentRequest } from './types/api_schemas/documents';
 import { IGetStringsQuery, ISourceDocument, IUpdateTranslationBody } from './types/api_schemas/strings';
 import { ICreateUserRequest, ILoginBody, IUpdateUserRequest } from "./types/api_schemas/users";
 import { IDatabaseAdapter } from "./types/database_adapter";
@@ -113,5 +114,13 @@ export class Controller {
     }
 
     assert.fail('Unknown query type');
+  }
+
+  deleteDocument(documentName: string) {
+    return this.databaseAdapter.deleteDocument(documentName);
+  }
+
+  updateDocument(documentName: string, updateOperation: IUpdateDocumentRequest) {
+    return this.databaseAdapter.moveDocument(documentName, updateOperation.newName);
   }
 }
