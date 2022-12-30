@@ -11,15 +11,15 @@ import { IDatabaseAdapter } from './types/database_adapter';
 import { createAttachUserMiddleware } from './middleware/authentication';
 import { adminOnly, checkTranslatorLanguage } from './middleware/authorization';
 import { Controller } from './controller';
-import { documentFetchQuery, ISourceDocument, IUpdateTranslationBody, sourceDocumentBody, updateTranslationBody } from './types/api_schemas/strings';
+import { documentFetchQuery, getStringsQuerySchema, IGetStringsQuery, ISourceDocument, IStringHistoryQuery, IUpdateTranslationBody, sourceDocumentBody, stringHistoryQuery, updateTranslationBody } from './types/api_schemas/strings';
 import { assertIsAuthenticatedRequest } from './types/type_guards';
-import { ApiError, BadRequestError } from './types/errors';
+import { ApiError } from './types/errors';
 
 async function main() {
   const database: IDatabaseAdapter = new BetterSQLite3Database('./database.db');
   const controller = new Controller(database);
 
-  await initializeAdminUser(database);
+  await initializeAdminUser(controller);
 
   const app = express();
   app.use(cookieParser());
@@ -40,7 +40,7 @@ async function main() {
 
   app.use(createAttachUserMiddleware(database));
 
-  app.post('/api/v1/logout', validator.body(loginBody), async (_req, res) => {
+  app.post('/api/v1/logout', async (_req, res) => {
     res.clearCookie('apiKey');
     return res.status(200).json({ success: true });
   });
@@ -112,24 +112,19 @@ async function main() {
       return next(err);
     }
   });
-  
-  app.get('/api/v1/stringhistory', async (req, res, next) => {
+
+  app.get('/api/v1/strings', validator.query(getStringsQuerySchema), async (req, res, next) => {
     try {
-      const sourceStringId = req.query['sourceStringId'] ? Number(req.query['sourceStringId']) : undefined;
-      const languageCode = req.query['languageCode'] as string | undefined;
-      const historyIdOffset  = req.query['historyIdOffset'] ? Number(req.query['historyIdOffset']) : undefined;
-      const limit = req.query['limit'] ? Number(req.query['limit']) : undefined;
-      
-      const invalidArgument =
-        (sourceStringId !== undefined && !(sourceStringId > 0)) || // invalid sourceStringId
-        (historyIdOffset !== undefined && !(historyIdOffset > 0)) || // invalid historyIdOffset
-        (limit !== undefined && (!(limit > 0) || !(limit <= 100))); // invalid limit
-
-      if (invalidArgument) {
-        throw new BadRequestError('INVALID_QUERY_PARAMETERS');
-      }
-
-      const result = await controller.getStringHistory({ sourceStringId, languageCode, historyIdOffset, limit });
+      const result = await controller.getStrings(req.query as unknown as IGetStringsQuery);
+      return res.status(200).json(result);
+    } catch (err) {
+      return next(err);
+    }
+  });
+  
+  app.get('/api/v1/stringhistory', validator.query(stringHistoryQuery), async (req, res, next) => {
+    try {
+      const result = await controller.getStringHistory(req.query as IStringHistoryQuery);
       return res.status(200).json(result);
     } catch (err) {
       return next(err);

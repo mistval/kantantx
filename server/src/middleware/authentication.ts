@@ -19,6 +19,7 @@ export function createAttachUserMiddleware(database: IDatabaseAdapter) {
       }
 
       (req as IAuthenticatedRequest).user = user;
+      next();
     } catch (err) {
       return next(err);
     }

@@ -1,7 +1,7 @@
 import assert from 'assert';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { ISourceDocument, IUpdateTranslationBody } from './types/api_schemas/strings';
+import { IGetStringsQuery, ISourceDocument, IUpdateTranslationBody } from './types/api_schemas/strings';
 import { ICreateUserRequest, ILoginBody, IUpdateUserRequest } from "./types/api_schemas/users";
 import { IDatabaseAdapter } from "./types/database_adapter";
 import { UpdateUserOperation } from './types/enums';
@@ -14,6 +14,10 @@ export class Controller {
   constructor(
     private readonly databaseAdapter: IDatabaseAdapter,
   ) {
+  }
+
+  adminUserExists(): Promise<boolean> {
+    return this.databaseAdapter.adminUserExists();
   }
 
   async validateLogin(loginRequest: ILoginBody): Promise<ISensitiveUser> {
@@ -93,5 +97,15 @@ export class Controller {
 
   getStringHistory(options: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined }) {
     return this.databaseAdapter.getStringHistory(options);
+  }
+
+  getStrings(query: IGetStringsQuery) {
+    if (query.needingTranslation) {
+      return this.databaseAdapter.getStringsNeedingTranslation(query.languageCode, query.limit, query.sourceStringIdOffset);
+    } else if (query.translated) {
+      return this.databaseAdapter.getTranslatedStrings(query.languageCode, query.limit, query.sourceStringIdOffset);
+    }
+
+    assert.fail('Unknown query type');
   }
 }

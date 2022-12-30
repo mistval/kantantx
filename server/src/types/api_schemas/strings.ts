@@ -42,4 +42,42 @@ export interface IStringHistory {
   eventType: string;
   value: string;
   eventDate: string;
-}
+};
+
+export interface IStringHistoryQuery {
+  limit?: number;
+  sourceStringId?: number;
+  languageCode?: string;
+  historyIdOffset?: number;
+};
+
+export const stringHistoryQuery = Joi.object<IStringHistoryQuery>({
+  limit: Joi.number().min(1).max(100).optional(),
+  sourceStringId: Joi.number().min(1).optional(),
+  languageCode: Joi.string().optional(),
+  historyIdOffset: Joi.number().min(1).optional(),
+});
+
+export interface IGetStringsQuery {
+  languageCode: string;
+  limit?: number;
+  sourceStringIdOffset?: number;
+  needingTranslation?: string;
+  translated?: string;
+};
+
+const getTranslatedStringsQuery = Joi.object<IGetStringsQuery>({
+  languageCode: Joi.string().min(1).required(),
+  limit: Joi.number().min(1).max(100).optional(),
+  sourceStringIdOffset: Joi.number().optional(),
+  translated: Joi.boolean().valid(true).required(),
+});
+
+const getUntranslatedStringsQuery = Joi.object<IGetStringsQuery>({
+  languageCode: Joi.string().min(1).required(),
+  limit: Joi.number().min(1).max(100).optional(),
+  sourceStringIdOffset: Joi.number().optional(),
+  needingTranslation: Joi.boolean().valid(true).required(),
+});
+
+export const getStringsQuerySchema = Joi.alternatives().try(getTranslatedStringsQuery, getUntranslatedStringsQuery);

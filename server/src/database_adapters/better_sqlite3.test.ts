@@ -173,9 +173,9 @@ describe('Better-sqlite3 database tests', () => {
 
     expect(resultStrings2).toHaveLength(2);
 
-    const translatedStrings = database.getTranslatedStrings('fr-FR', 100);
+    const translatedStrings = await database.getTranslatedStrings('fr-FR', 100);
     expect(translatedStrings).toHaveLength(1);
-    expect(translatedStrings[0].id).toEqual(resultStrings[0]!['id']);
+    expect(translatedStrings[0]!.id).toEqual(resultStrings[0]!['id']);
   });
 
   it('Can translate a string, have it overwritten by a new source, and then translate it again', async () => {

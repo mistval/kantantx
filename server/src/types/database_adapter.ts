@@ -1,4 +1,4 @@
-import { ISourceDocument, IStringHistory, ITranslatedDocument } from "./api_schemas/strings";
+import { ISourceDocument, ISourceString, IStringHistory, ITranslatedDocument } from "./api_schemas/strings";
 import { Role } from "./enums";
 import { IPublicUser, ISensitiveUser } from "./user";
 
@@ -16,4 +16,6 @@ export interface IDatabaseAdapter {
   getStrings: (documentName: string, languageCode: string) => Promise<ITranslatedDocument | ISourceDocument>;
   updateTranslation: (sourceStringId: number, languageCode: string, value: string, userId: number) => Promise<void>;
   getStringHistory: (options?: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined }) => Promise<IStringHistory[]>;
+  getStringsNeedingTranslation: (languageCode: string, limit?: number, sourceStringIdOffset?: number) => Promise<Array<ISourceString & { id: number }>>;
+  getTranslatedStrings: (languageCode: string, limit?: number, sourceStringIdOffset?: number) => Promise<Array<ISourceString & { id: number }>>;
 }

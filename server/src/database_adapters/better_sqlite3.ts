@@ -6,7 +6,7 @@ import { Role } from "../types/enums";
 import betterSqlite3 from "better-sqlite3";
 import { ConflictError, NotFoundError } from '../types/errors';
 import { IPublicUser, ISensitiveUser } from '../types/user';
-import { ISourceDocument, IStringHistory, ITranslatedDocument } from '../types/api_schemas/strings';
+import { ISourceDocument, ISourceString, IStringHistory, ITranslatedDocument } from '../types/api_schemas/strings';
 
 export interface IRawUser {
   id: number;
@@ -197,11 +197,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     ON CONFLICT (sourceStringId, languageCode)
     DO UPDATE SET
       value = EXCLUDED.value,
-      valueLastUpdatedDate = IIF(
-        value = EXCLUDED.value,
-        valueLastUpdatedDate,
-        STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')
-      )
+      valueLastUpdatedDate = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')
     ;
   `);
 
@@ -266,8 +262,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         OR
         source_strings.id < @sourceStringIdOffset
       )
-    ORDER BY source_strings.id DESC
-    LIMIT @limit;
+    ORDER BY source_strings.valueLastUpdatedDate DESC, source_strings.id DESC
+    LIMIT IIF(@limit IS NULL, 100, @limit);
   `);
 
   private readonly getTranslatedStringsStatement = this.db.prepare(`
@@ -295,8 +291,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         OR
         source_strings.id < @sourceStringIdOffset
       )
-    ORDER BY source_strings.id DESC
-    LIMIT @limit;
+    ORDER BY translated_strings.valueLastUpdatedDate DESC, source_strings.id DESC
+    LIMIT IIF(@limit IS NULL, 100, @limit);
   `);
 
   private readonly getUserByApiKeyStatement = this.db.prepare(`
@@ -509,20 +505,18 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return Promise.resolve();
   }
 
-  getStringsNeedingTranslation(languageCode: string, limit: number, sourceStringIdOffset?: number): Promise<Array<{
-    id: number;
-    key: string;
-    value: string;
-    comment?: string;
-  }>> {
+  getStringsNeedingTranslation(languageCode: string, limit?: number, sourceStringIdOffset?: number): Promise<Array<ISourceString & { id: number }>> {
     const results = this.getStringsNeedingTranslationStatement.all({ languageCode, sourceStringIdOffset, limit });
     return Promise.resolve(
       results.map((r) => _omitBy(r, (v) => v === null)) as any
     );
   }
 
-  getTranslatedStrings(languageCode: string, limit: number, sourceStringIdOffset?: number) {
-    return this.getTranslatedStringsStatement.all({ languageCode, sourceStringIdOffset, limit });
+  getTranslatedStrings(languageCode: string, limit?: number, sourceStringIdOffset?: number): Promise<Array<ISourceString & { id: number }>> {
+    const results = this.getTranslatedStringsStatement.all({ languageCode, sourceStringIdOffset, limit });
+    return Promise.resolve(
+      results.map((r) => _omitBy(r, (v) => v === null)) as any
+    );
   }
 
   adminUserExists() {

@@ -1,7 +1,8 @@
-import { IDatabaseAdapter } from "./types/database_adapter";
+import { Controller } from "./controller";
+import { Role } from "./types/enums";
 
-export async function initializeAdminUser(database: IDatabaseAdapter) {
-  const adminUserExists = await database.adminUserExists();
+export async function initializeAdminUser(controller: Controller) {
+  const adminUserExists = await controller.adminUserExists();
 
   if (!adminUserExists) {
     const adminUsername = process.env['ADMIN_USERNAME'];
@@ -14,5 +15,12 @@ export async function initializeAdminUser(database: IDatabaseAdapter) {
     if (!adminPassword) {
       throw new Error('No admin password specified. Please set the ADMIN_USERNAME and ADMIN_PASSWORD environment variables and try again.');
     }
+
+    await controller.createUser({
+      username: adminUsername,
+      password: adminPassword,
+      role: Role.ADMIN,
+      languageCodes: [],
+    });
   }
 }
