@@ -1,0 +1,26 @@
+{
+  "name": "kantantx-cli",
+  "version": "1.0.0",
+  "description": "The CLI for using KantanTX",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "translation",
+    "cli",
+    "translations"
+  ],
+  "author": "mistval",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/yargs": "^17.0.18",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.3",
+    "node-fetch": "^2.6.7",
+    "yargs": "^17.6.2"
+  }
+}
