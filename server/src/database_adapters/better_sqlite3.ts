@@ -170,13 +170,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
   private readonly upsertSourceStringStatement = this.db.prepare(`
     INSERT INTO source_strings (documentId, key, value, comment, stringOrder)
-    VALUES (
-      (SELECT id FROM documents WHERE name = ?),
-      ?,
-      ?,
-      ?,
-      ?
-    )
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT (documentId, key)
     DO UPDATE SET
       value = EXCLUDED.value,
@@ -462,7 +456,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         const existingSourceString = this.getDocumentStringByKeyStatement.get(documentId, sourceString.key);
 
         const { id: sourceStringId } = this.upsertSourceStringStatement.get(
-          documentName,
+          documentId,
           sourceString.key,
           sourceString.value,
           sourceString.comment,

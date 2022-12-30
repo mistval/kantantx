@@ -6,7 +6,7 @@ import { ICreateUserRequest, ILoginBody, IUpdateUserRequest } from "./types/api_
 import { IDatabaseAdapter } from "./types/database_adapter";
 import { UpdateUserOperation } from './types/enums';
 import { UnauthorizedError } from './types/errors';
-import { ISensitiveUser } from './types/user';
+import { IPublicSensitiveUser } from './types/user';
 
 const PASSWORD_SALT_ROUNDS = 10;
 
@@ -20,7 +20,7 @@ export class Controller {
     return this.databaseAdapter.adminUserExists();
   }
 
-  async validateLogin(loginRequest: ILoginBody): Promise<ISensitiveUser> {
+  async validateLogin(loginRequest: ILoginBody): Promise<IPublicSensitiveUser> {
     const user = await this.databaseAdapter.getSensitiveUser(loginRequest.username);
 
     if (!user) {
@@ -33,7 +33,13 @@ export class Controller {
       throw new UnauthorizedError('INVALID_PASSWORD');
     }
 
-    return user;
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      apiKey: user.apiKey,
+      languageCodes: user.languageCodes,
+    };
   }
 
   async createUser(createOptions: ICreateUserRequest) {

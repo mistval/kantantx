@@ -9,4 +9,6 @@ export interface ISensitiveUser {
   languageCodes: string[];
 }
 
+export type IPublicSensitiveUser = Omit<ISensitiveUser, 'passwordHash'>;
+
 export type IPublicUser = Omit<ISensitiveUser, 'passwordHash' | 'apiKey'>;

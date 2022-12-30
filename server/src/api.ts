@@ -32,7 +32,7 @@ async function main() {
     try {
       const user = await controller.validateLogin(req.body as ILoginBody);
       res.cookie('apiKey', user.apiKey, { httpOnly: true, secure: true, sameSite: 'strict' });
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, apiKey: user.apiKey });
     } catch (err) {
       return next(err);
     }
