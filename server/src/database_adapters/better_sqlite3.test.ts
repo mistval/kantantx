@@ -217,4 +217,40 @@ describe('Better-sqlite3 database tests', () => {
     expect(historyAll).toHaveLength(7);
     expect(historyGerman).toHaveLength(4);
   });
+
+  it('Can delete a document', async () => {
+    await createDefaultAdmin();
+
+    const strings1 = [
+      { key: 'string1', value: 'String 1', additionalFields: [] },
+      { key: 'string2', value: 'String 2', additionalFields: [] },
+      { key: 'string3', value: 'String 2', additionalFields: [] },
+    ];
+
+    await database.updateSourceStrings(1, 'testdocument', strings1);
+    const resultStrings1 = await database.getStrings('testdocument', 'source');
+    await database.deleteDocument('testdocument');
+    const resultStrings2 = await database.getStrings('testdocument', 'source');
+
+    expect(resultStrings1).toEqual(strings1);
+    expect(resultStrings2).toHaveLength(0);
+  });
+
+  it('Can move a document', async () => {
+    await createDefaultAdmin();
+
+    const strings1 = [
+      { key: 'string1', value: 'String 1', additionalFields: [] },
+      { key: 'string2', value: 'String 2', additionalFields: [] },
+      { key: 'string3', value: 'String 2', additionalFields: [] },
+    ];
+
+    await database.updateSourceStrings(1, 'testdocument', strings1);
+    await database.moveDocument('testdocument', 'testdocument2');
+    const resultStrings1 = await database.getStrings('testdocument', 'source');
+    const resultStrings2 = await database.getStrings('testdocument2', 'source');
+
+    expect(resultStrings1).toHaveLength(0);
+    expect(resultStrings2).toEqual(strings1);
+  });
 });
