@@ -5,7 +5,7 @@ import { IDatabaseAdapter } from "../types/database_adapter";
 import { Role } from "../types/enums";
 import betterSqlite3 from "better-sqlite3";
 import { ConflictError, NotFoundError } from '../types/errors';
-import { IPublicUser, ISensitiveUser } from '../types/user';
+import { ISensitiveUser } from '../types/user';
 import { ISourceDocument, ISourceString, IStringHistory, ITranslatedDocument } from '../types/api_schemas/strings';
 
 export interface IRawUser {
@@ -375,6 +375,19 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     WHERE apiKey = ?;
   `);
 
+  private readonly getUsersByRoleStatement = this.db.prepare(`
+    SELECT
+    *,
+    (
+      SELECT JSON_GROUP_ARRAY(languageCode)
+      FROM user_languages
+      WHERE user_languages.userId = users.id
+    ) AS languageCodes
+    FROM users
+    WHERE role = @role
+    LIMIT IIF(@limit IS NULL, 100, @limit);
+  `);
+
   private readonly getUserByUsernameStatement = this.db.prepare(`
     SELECT
     *,
@@ -421,7 +434,6 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
   private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents;');
   private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM translated_strings;');
-  private readonly getAdminUserStatement = this.db.prepare(`SELECT * FROM users WHERE role = '${Role.ADMIN}' LIMIT 1;`);
   private readonly deleteDocumentStatement = this.db.prepare('DELETE FROM documents WHERE name = ?;');
   private readonly moveDocumentStatement = this.db.prepare('UPDATE documents SET name = ? WHERE name = ?;');
 
@@ -437,7 +449,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     this.db.close();
   }
 
-  getSensitiveUser(username: string): Promise<ISensitiveUser | undefined> {
+  getUserByUsername(username: string): Promise<ISensitiveUser | undefined> {
     const user = this.getUserByUsernameStatement.get(username) as IRawUser;
     if (!user) {
       return Promise.resolve(undefined);
@@ -446,7 +458,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return Promise.resolve(parseRawDBUser(user));
   }
 
-  getUserByApiKey(apiKey: string): Promise<IPublicUser | undefined> {
+  getUserByApiKey(apiKey: string): Promise<ISensitiveUser | undefined> {
     const user = this.getUserByApiKeyStatement.get(apiKey);
     if (!user) {
       return Promise.resolve(undefined);
@@ -470,7 +482,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       }
     })();
 
-    const sensitiveUser = await this.getSensitiveUser(username);
+    const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
     return sensitiveUser;
   }
@@ -483,7 +495,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     }
 
     this.setUserPasswordStatement.run(passwordHash, existingUser.id);
-    const sensitiveUser = await this.getSensitiveUser(username);
+    const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
     return sensitiveUser;
   }
@@ -496,7 +508,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     }
 
     this.setUserApiKeyStatement.run(apiKey, existingUser.id);
-    const sensitiveUser = await this.getSensitiveUser(username);
+    const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
     return sensitiveUser;
   }
@@ -516,12 +528,12 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       }
     })();
 
-    const sensitiveUser = await this.getSensitiveUser(username);
+    const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
     return sensitiveUser;
   }
 
-  updateSourceStrings(userId: number, documentName: string, sourceStrings: Array<ISourceString>) {
+  updateDocumentSourceStrings(userId: number, documentName: string, sourceStrings: Array<ISourceString>) {
     const stringsWithOrder = sourceStrings.map((sourceString, index) => ({ ...sourceString, order: index }));
     const { id: documentId } = this.upsertDocumentStatement.get(documentName);
 
@@ -557,7 +569,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return Promise.resolve();
   }
 
-  getStrings(documentName: string, languageCode: string): Promise<ITranslatedDocument | ISourceDocument> {
+  getDocumentStrings(documentName: string, languageCode: string): Promise<ITranslatedDocument | ISourceDocument> {
     const results = languageCode === 'source'
       ? this.getSourceStringsDocumentStatement.all(documentName)
       : this.getTranslatedStringsDocumentStatement.all(languageCode, documentName);
@@ -570,7 +582,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   getLanguageCodes() {
-    return Promise.resolve(this.getLanguageCodesStatement.all());
+    return Promise.resolve(this.getLanguageCodesStatement.all().map(r => r.languageCode));
   }
 
   updateTranslation(sourceStringId: number, languageCode: string, value: string, userId: number) {
@@ -596,8 +608,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     );
   }
 
-  adminUserExists() {
-    return Promise.resolve(Boolean(this.getAdminUserStatement.get()));
+  getUsersByRole(role: Role, limit?: number) {
+    return Promise.resolve(this.getUsersByRoleStatement.all({ role, limit }));
   }
 
   getStringHistory(options: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined } = {}): Promise<IStringHistory[]> {

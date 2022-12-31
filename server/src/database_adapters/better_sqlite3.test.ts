@@ -73,7 +73,7 @@ describe('Better-sqlite3 database tests', () => {
     await database.createUser('user1', 'hash', Role.TRANSLATOR, 'apikey1', ['en', 'fr']);
     await database.updateUserPassword('user1', 'xyz');
 
-    const result1 = await database.getSensitiveUser('user1');
+    const result1 = await database.getUserByUsername('user1');
 
     expect(result1?.passwordHash).toEqual('xyz');
   });
@@ -96,8 +96,8 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3', uiHidden: false }] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', strings);
-    const resultStrings = await database.getStrings('testdocument', 'source');
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings);
+    const resultStrings = await database.getDocumentStrings('testdocument', 'source');
 
     expect(resultStrings).toEqual(strings);
   });
@@ -116,10 +116,10 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string2', value: 'String XYZ', additionalFields: [] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', strings1);
-    await database.updateSourceStrings(1, 'testdocument', strings2);
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings1);
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings2);
 
-    const resultStrings = await database.getStrings('testdocument', 'source');
+    const resultStrings = await database.getDocumentStrings('testdocument', 'source');
 
     expect(resultStrings).toEqual(strings2);
   });
@@ -133,9 +133,9 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3' }] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', strings1);
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings1);
 
-    const resultStrings = await database.getStrings('testdocument', 'fr-FR');
+    const resultStrings = await database.getDocumentStrings('testdocument', 'fr-FR');
 
     expect(resultStrings).toEqual([]);
   });
@@ -149,7 +149,7 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string3', value: 'String 2', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3', uiHidden: false }] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', strings1);
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings1);
 
     const resultStrings = await database.getStringsNeedingTranslation('fr-FR', 100);
 
@@ -166,7 +166,7 @@ describe('Better-sqlite3 database tests', () => {
     ];
 
     await database.createUser('user1', 'hash', Role.TRANSLATOR, 'apikey1', ['en', 'fr']);
-    await database.updateSourceStrings(1, 'testdocument', strings1);
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings1);
     const resultStrings = await database.getStringsNeedingTranslation('fr-FR', 100);
     await database.updateTranslation(resultStrings[0]!['id'], 'fr-FR', 'String 1 FR', 2);
     const resultStrings2 = await database.getStringsNeedingTranslation('fr-FR', 100);
@@ -187,7 +187,7 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string3', value: 'String 3', additionalFields: [{ fieldName: 'Comment', value: 'Comment 3' }] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', initialSourceStrings);
+    await database.updateDocumentSourceStrings(1, 'testdocument', initialSourceStrings);
     const initialStringsToTranslate = await database.getStringsNeedingTranslation('fr-FR', 100);
 
     const string1 = initialStringsToTranslate.find(s => s.key === 'string1');
@@ -198,7 +198,7 @@ describe('Better-sqlite3 database tests', () => {
     expect(await database.getStringsNeedingTranslation('fr-FR', 100)).toHaveLength(1);
 
     const updatedSourceStrings = initialSourceStrings.map((s) => s.key === 'string1' ? { ...s, value: 'String 1 Updated' } : s);
-    await database.updateSourceStrings(1, 'testdocument', updatedSourceStrings);
+    await database.updateDocumentSourceStrings(1, 'testdocument', updatedSourceStrings);
 
     const updatedStringsToTranslated = await database.getStringsNeedingTranslation('fr-FR', 100);
     expect(updatedStringsToTranslated).toHaveLength(2);
@@ -227,10 +227,10 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string3', value: 'String 2', additionalFields: [] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', strings1);
-    const resultStrings1 = await database.getStrings('testdocument', 'source');
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings1);
+    const resultStrings1 = await database.getDocumentStrings('testdocument', 'source');
     await database.deleteDocument('testdocument');
-    const resultStrings2 = await database.getStrings('testdocument', 'source');
+    const resultStrings2 = await database.getDocumentStrings('testdocument', 'source');
 
     expect(resultStrings1).toEqual(strings1);
     expect(resultStrings2).toHaveLength(0);
@@ -245,10 +245,10 @@ describe('Better-sqlite3 database tests', () => {
       { key: 'string3', value: 'String 2', additionalFields: [] },
     ];
 
-    await database.updateSourceStrings(1, 'testdocument', strings1);
+    await database.updateDocumentSourceStrings(1, 'testdocument', strings1);
     await database.moveDocument('testdocument', 'testdocument2');
-    const resultStrings1 = await database.getStrings('testdocument', 'source');
-    const resultStrings2 = await database.getStrings('testdocument2', 'source');
+    const resultStrings1 = await database.getDocumentStrings('testdocument', 'source');
+    const resultStrings2 = await database.getDocumentStrings('testdocument2', 'source');
 
     expect(resultStrings1).toHaveLength(0);
     expect(resultStrings2).toEqual(strings1);

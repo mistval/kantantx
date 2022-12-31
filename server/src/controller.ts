@@ -22,7 +22,7 @@ export class Controller {
   }
 
   async validateLogin(loginRequest: ILoginBody): Promise<IPublicSensitiveUser> {
-    const user = await this.databaseAdapter.getSensitiveUser(loginRequest.username);
+    const user = await this.databaseAdapter.getUserByUsername(loginRequest.username);
 
     if (!user) {
       throw new UnauthorizedError('INVALID_USERNAME');
@@ -87,7 +87,7 @@ export class Controller {
   }
 
   updateSourceDocument(updaterUserId: number, documentName: string, documentBody: ISourceDocument) {
-    return this.databaseAdapter.updateSourceStrings(
+    return this.databaseAdapter.updateDocumentSourceStrings(
       updaterUserId,
       documentName,
       documentBody,
@@ -95,7 +95,7 @@ export class Controller {
   }
 
   getDocumentStrings(documentName: string, languageCode: string) {
-    return this.databaseAdapter.getStrings(documentName, languageCode);
+    return this.databaseAdapter.getDocumentStrings(documentName, languageCode);
   }
 
   async updateTranslation(userId: number, stringId: number, languageCode: string, updateTranslationBody: IUpdateTranslationBody) {

@@ -10,5 +10,3 @@ export interface ISensitiveUser {
 }
 
 export type IPublicSensitiveUser = Omit<ISensitiveUser, 'passwordHash'>;
-
-export type IPublicUser = Omit<ISensitiveUser, 'passwordHash' | 'apiKey'>;
