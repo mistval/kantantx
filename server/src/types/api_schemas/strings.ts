@@ -1,4 +1,4 @@
-import Joi from "joi";
+import Joi from 'joi';
 
 export interface ISourceString {
   key: string;
@@ -8,7 +8,7 @@ export interface ISourceString {
     value: string;
     uiHidden?: boolean;
   }>;
-};
+}
 
 export interface ITranslatedString {
   key: string;
@@ -21,13 +21,16 @@ export type ITranslatedDocument = ITranslatedString[];
 const sourceStringSchema = Joi.object<ISourceString>({
   key: Joi.string().min(1).required(),
   value: Joi.string().required(),
-  additionalFields: Joi.array().items(
-    Joi.object({
-      fieldName: Joi.string().min(1).required(),
-      value: Joi.string().required(),
-      uiHidden: Joi.boolean().optional(),
-    })
-  ).optional().default([]),
+  additionalFields: Joi.array()
+    .items(
+      Joi.object({
+        fieldName: Joi.string().min(1).required(),
+        value: Joi.string().required(),
+        uiHidden: Joi.boolean().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 export const sourceDocumentBody = Joi.array().items(sourceStringSchema).required();
@@ -52,14 +55,14 @@ export interface IStringHistory {
   eventType: string;
   value: string;
   eventDate: string;
-};
+}
 
 export interface IStringHistoryQuery {
   limit?: number;
   sourceStringId?: number;
   languageCode?: string;
   historyIdOffset?: number;
-};
+}
 
 export const stringHistoryQuery = Joi.object<IStringHistoryQuery>({
   limit: Joi.number().min(1).max(100).optional(),
@@ -74,7 +77,7 @@ export interface IGetStringsQuery {
   sourceStringIdOffset?: number;
   needingTranslation?: string;
   translated?: string;
-};
+}
 
 const getTranslatedStringsQuery = Joi.object<IGetStringsQuery>({
   languageCode: Joi.string().min(1).required(),
@@ -90,4 +93,7 @@ const getUntranslatedStringsQuery = Joi.object<IGetStringsQuery>({
   needingTranslation: Joi.boolean().valid(true).required(),
 });
 
-export const getStringsQuerySchema = Joi.alternatives().try(getTranslatedStringsQuery, getUntranslatedStringsQuery);
+export const getStringsQuerySchema = Joi.alternatives().try(
+  getTranslatedStringsQuery,
+  getUntranslatedStringsQuery,
+);

@@ -2,23 +2,24 @@ import assert from 'assert';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { IUpdateDocumentRequest } from './types/api_schemas/documents';
-import { IGetStringsQuery, ISourceDocument, IUpdateTranslationBody } from './types/api_schemas/strings';
-import { ICreateUserRequest, ILoginBody, IUpdateUserRequest } from "./types/api_schemas/users";
-import { IDatabaseAdapter } from "./types/database_adapter";
-import { UpdateUserOperation } from './types/enums';
+import {
+  IGetStringsQuery,
+  ISourceDocument,
+  IUpdateTranslationBody,
+} from './types/api_schemas/strings';
+import { ICreateUserRequest, ILoginBody, IUpdateUserRequest } from './types/api_schemas/users';
+import { IDatabaseAdapter } from './types/database_adapter';
+import { Role, UpdateUserOperation } from './types/enums';
 import { UnauthorizedError } from './types/errors';
 import { IPublicSensitiveUser } from './types/user';
 
 const PASSWORD_SALT_ROUNDS = 10;
 
 export class Controller {
-  constructor(
-    private readonly databaseAdapter: IDatabaseAdapter,
-  ) {
-  }
+  constructor(private readonly databaseAdapter: IDatabaseAdapter) {}
 
-  adminUserExists(): Promise<boolean> {
-    return this.databaseAdapter.adminUserExists();
+  async adminUserExists(): Promise<boolean> {
+    return (await this.databaseAdapter.getUsers({ role: Role.ADMIN })).length > 0;
   }
 
   async validateLogin(loginRequest: ILoginBody): Promise<IPublicSensitiveUser> {
@@ -78,11 +79,9 @@ export class Controller {
     const documents = await this.databaseAdapter.getDocuments();
     const languageCodes = await this.databaseAdapter.getLanguageCodes();
 
-    const destructuredLanguageCodes = languageCodes.map(({ languageCode }) => languageCode);
-
     return documents.map(({ name }) => ({
       name,
-      languageCodes: destructuredLanguageCodes,
+      languageCodes,
     }));
   }
 
@@ -98,19 +97,42 @@ export class Controller {
     return this.databaseAdapter.getDocumentStrings(documentName, languageCode);
   }
 
-  async updateTranslation(userId: number, stringId: number, languageCode: string, updateTranslationBody: IUpdateTranslationBody) {
-    return this.databaseAdapter.updateTranslation(stringId, languageCode, updateTranslationBody.value, userId);
+  async updateTranslation(
+    userId: number,
+    stringId: number,
+    languageCode: string,
+    updateTranslationBody: IUpdateTranslationBody,
+  ) {
+    return this.databaseAdapter.updateTranslation(
+      stringId,
+      languageCode,
+      updateTranslationBody.value,
+      userId,
+    );
   }
 
-  getStringHistory(options: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined }) {
+  getStringHistory(options: {
+    limit?: number | undefined;
+    sourceStringId?: number | undefined;
+    languageCode?: string | undefined;
+    historyIdOffset?: number | undefined;
+  }) {
     return this.databaseAdapter.getStringHistory(options);
   }
 
   getStrings(query: IGetStringsQuery) {
     if (query.needingTranslation) {
-      return this.databaseAdapter.getStringsNeedingTranslation(query.languageCode, query.limit, query.sourceStringIdOffset);
+      return this.databaseAdapter.getStringsNeedingTranslation(
+        query.languageCode,
+        query.limit,
+        query.sourceStringIdOffset,
+      );
     } else if (query.translated) {
-      return this.databaseAdapter.getTranslatedStrings(query.languageCode, query.limit, query.sourceStringIdOffset);
+      return this.databaseAdapter.getTranslatedStrings(
+        query.languageCode,
+        query.limit,
+        query.sourceStringIdOffset,
+      );
     }
 
     assert.fail('Unknown query type');

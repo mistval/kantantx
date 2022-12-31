@@ -1,12 +1,12 @@
-import Joi from "joi";
-import { Role, UpdateUserOperation } from "../enums";
+import Joi from 'joi';
+import { Role, UpdateUserOperation } from '../enums';
 
 export interface ICreateUserRequest {
   username: string;
   password: string;
   role: Role;
   languageCodes: string[];
-};
+}
 
 export const createUserBody = Joi.object<ICreateUserRequest>({
   username: Joi.string().min(1).required(),
@@ -33,7 +33,10 @@ interface IUpdateUserApiKeyRequest extends IBaseUpdateUserRequest {
   operation: UpdateUserOperation.UPDATE_API_KEY;
 }
 
-export type IUpdateUserRequest = IUpdateUserPasswordRequest | IUpdateUserLanguagesRequest | IUpdateUserApiKeyRequest;
+export type IUpdateUserRequest =
+  | IUpdateUserPasswordRequest
+  | IUpdateUserLanguagesRequest
+  | IUpdateUserApiKeyRequest;
 
 const updatePasswordBody = Joi.object<IUpdateUserPasswordRequest>({
   operation: Joi.valid(UpdateUserOperation.UPDATE_PASSWORD).required(),
@@ -58,7 +61,7 @@ export const updateUserBody = Joi.alternatives<IUpdateUserRequest>().try(
 export interface ILoginBody {
   username: string;
   password: string;
-};
+}
 
 export const loginBody = Joi.object<ILoginBody>({
   username: Joi.string().min(1).required(),

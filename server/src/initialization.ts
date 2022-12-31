@@ -1,5 +1,5 @@
-import { Controller } from "./controller";
-import { Role } from "./types/enums";
+import { Controller } from './controller';
+import { Role } from './types/enums';
 
 export async function initializeAdminUser(controller: Controller) {
   const adminUserExists = await controller.adminUserExists();
@@ -9,11 +9,15 @@ export async function initializeAdminUser(controller: Controller) {
     const adminPassword = process.env['ADMIN_PASSWORD'];
 
     if (!adminUsername) {
-      throw new Error('No admin username specified. Please set the ADMIN_USERNAME and ADMIN_PASSWORD environment variables and try again.');
+      throw new Error(
+        'No admin username specified. Please set the ADMIN_USERNAME and ADMIN_PASSWORD environment variables and try again.',
+      );
     }
 
     if (!adminPassword) {
-      throw new Error('No admin password specified. Please set the ADMIN_USERNAME and ADMIN_PASSWORD environment variables and try again.');
+      throw new Error(
+        'No admin password specified. Please set the ADMIN_USERNAME and ADMIN_PASSWORD environment variables and try again.',
+      );
     }
 
     await controller.createUser({

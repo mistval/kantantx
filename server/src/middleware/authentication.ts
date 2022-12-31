@@ -7,11 +7,16 @@ export function createAttachUserMiddleware(database: IDatabaseAdapter) {
   return async function (req: express.Request, _res: express.Response, next: express.NextFunction) {
     try {
       const apiKey = req.header('authorization')?.replace('Bearer ', '') ?? req.cookies.apiKey;
-  
+
       if (!apiKey) {
-        return next(new UnauthorizedError('NO_API_KEY', 'You must provide an API key, either in the Authorization header or in the apiKey cookie.'));
+        return next(
+          new UnauthorizedError(
+            'NO_API_KEY',
+            'You must provide an API key, either in the Authorization header or in the apiKey cookie.',
+          ),
+        );
       }
-    
+
       const user = await database.getUserByApiKey(apiKey);
 
       if (!user) {
@@ -23,5 +28,5 @@ export function createAttachUserMiddleware(database: IDatabaseAdapter) {
     } catch (err) {
       return next(err);
     }
-  }
+  };
 }

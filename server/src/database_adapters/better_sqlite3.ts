@@ -1,12 +1,17 @@
 import assert from 'assert';
 import _omitBy from 'lodash.omitby';
 import _omit from 'lodash.omit';
-import { IDatabaseAdapter } from "../types/database_adapter";
-import { Role } from "../types/enums";
-import betterSqlite3 from "better-sqlite3";
+import { IDatabaseAdapter } from '../types/database_adapter';
+import { Role } from '../types/enums';
+import betterSqlite3 from 'better-sqlite3';
 import { ConflictError, NotFoundError } from '../types/errors';
 import { ISensitiveUser } from '../types/user';
-import { ISourceDocument, ISourceString, IStringHistory, ITranslatedDocument } from '../types/api_schemas/strings';
+import {
+  ISourceDocument,
+  ISourceString,
+  IStringHistory,
+  ITranslatedDocument,
+} from '../types/api_schemas/strings';
 
 export interface IRawUser {
   id: number;
@@ -33,15 +38,16 @@ function parseRawDBUser(rawUser: IRawUser): ISensitiveUser {
 function parseRawDBString(rawString: IRawSourceString): ISourceString {
   return {
     ...rawString,
-    additionalFields: rawString.additionalFields && JSON.parse(rawString.additionalFields).map((field: any) => ({
-      ...field,
-      uiHidden: Boolean(field.uiHidden),
-    })),
+    additionalFields:
+      rawString.additionalFields &&
+      JSON.parse(rawString.additionalFields).map((field: any) => ({
+        ...field,
+        uiHidden: Boolean(field.uiHidden),
+      })),
   };
 }
 
 export class BetterSQLite3Database implements IDatabaseAdapter {
-
   /* TABLES */
 
   // @ts-expect-error
@@ -375,7 +381,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     WHERE apiKey = ?;
   `);
 
-  private readonly getUsersByRoleStatement = this.db.prepare(`
+  private readonly getUsersStatement = this.db.prepare(`
     SELECT
     *,
     (
@@ -384,7 +390,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       WHERE user_languages.userId = users.id
     ) AS languageCodes
     FROM users
-    WHERE role = @role
+    WHERE (@role IS NULL OR role = @role)
     LIMIT IIF(@limit IS NULL, 100, @limit);
   `);
 
@@ -431,19 +437,27 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     LIMIT IIF(@limit IS NULL, 100, @limit);
   `);
 
-  private readonly deleteUserLanguagesStatement = this.db.prepare(`DELETE FROM user_languages WHERE userId = ?;`);
+  private readonly deleteUserLanguagesStatement = this.db.prepare(
+    `DELETE FROM user_languages WHERE userId = ?;`,
+  );
+
   private readonly getDocumentNamesStatement = this.db.prepare('SELECT name FROM documents;');
-  private readonly getLanguageCodesStatement = this.db.prepare('SELECT DISTINCT languageCode FROM translated_strings;');
-  private readonly deleteDocumentStatement = this.db.prepare('DELETE FROM documents WHERE name = ?;');
-  private readonly moveDocumentStatement = this.db.prepare('UPDATE documents SET name = ? WHERE name = ?;');
+
+  private readonly getLanguageCodesStatement = this.db.prepare(
+    'SELECT DISTINCT languageCode FROM translated_strings;',
+  );
+
+  private readonly deleteDocumentStatement = this.db.prepare(
+    'DELETE FROM documents WHERE name = ?;',
+  );
+
+  private readonly moveDocumentStatement = this.db.prepare(
+    'UPDATE documents SET name = ? WHERE name = ?;',
+  );
 
   /* IMPLEMENTATION */
 
-  constructor(
-    databaseFilePath: string,
-    private readonly db = betterSqlite3(databaseFilePath),
-  ) {
-  }
+  constructor(databaseFilePath: string, private readonly db = betterSqlite3(databaseFilePath)) {}
 
   close() {
     this.db.close();
@@ -467,7 +481,13 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return Promise.resolve(parseRawDBUser(user));
   }
 
-  async createUser(username: string, passwordHash: string, role: Role, apiKey: string, languageCodes: string[]): Promise<ISensitiveUser> {
+  async createUser(
+    username: string,
+    passwordHash: string,
+    role: Role,
+    apiKey: string,
+    languageCodes: string[],
+  ): Promise<ISensitiveUser> {
     const existingUser = this.getUserByUsernameStatement.get(username) as IRawUser;
 
     if (existingUser) {
@@ -476,14 +496,13 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
     const { id } = this.createUserStatement.get(username, passwordHash, role, apiKey) as IRawUser;
 
-    this.db.transaction(() => {
-      for (const languageCode of languageCodes) {
-        this.insertUserLanguageCodeStatement.run(id, languageCode);
-      }
-    })();
+    for (const languageCode of languageCodes) {
+      this.insertUserLanguageCodeStatement.run(id, languageCode);
+    }
 
     const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
+
     return sensitiveUser;
   }
 
@@ -497,6 +516,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     this.setUserPasswordStatement.run(passwordHash, existingUser.id);
     const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
+
     return sensitiveUser;
   }
 
@@ -510,6 +530,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     this.setUserApiKeyStatement.run(apiKey, existingUser.id);
     const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
+
     return sensitiveUser;
   }
 
@@ -520,7 +541,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       throw new NotFoundError('USER_NOT_FOUND', 'A user with that username does not exist');
     }
 
-   this.db.transaction(() => {
+    this.db.transaction(() => {
       this.deleteUserLanguagesStatement.run(existingUser.id);
 
       for (const languageCode of languageCodes) {
@@ -530,11 +551,20 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
 
     const sensitiveUser = await this.getUserByUsername(username);
     assert(sensitiveUser);
+
     return sensitiveUser;
   }
 
-  updateDocumentSourceStrings(userId: number, documentName: string, sourceStrings: Array<ISourceString>) {
-    const stringsWithOrder = sourceStrings.map((sourceString, index) => ({ ...sourceString, order: index }));
+  updateDocumentSourceStrings(
+    userId: number,
+    documentName: string,
+    sourceStrings: Array<ISourceString>,
+  ) {
+    const stringsWithOrder = sourceStrings.map((sourceString, index) => ({
+      ...sourceString,
+      order: index,
+    }));
+
     const { id: documentId } = this.upsertDocumentStatement.get(documentName);
 
     this.db.transaction(() => {
@@ -542,7 +572,10 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
       this.softDeleteDocumentSourceStringsStatement.run(documentId);
 
       for (const sourceString of stringsWithOrder) {
-        const existingSourceString = this.getDocumentStringByKeyStatement.get(documentId, sourceString.key);
+        const existingSourceString = this.getDocumentStringByKeyStatement.get(
+          documentId,
+          sourceString.key,
+        );
 
         const { id: sourceStringId } = this.upsertSourceStringStatement.get(
           documentId,
@@ -561,7 +594,13 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         }
 
         if (!existingSourceString || existingSourceString.value !== sourceString.value) {
-          this.insertHistoryEventStatement.run(sourceStringId, 'source', 'newValue', sourceString.value, userId);
+          this.insertHistoryEventStatement.run(
+            sourceStringId,
+            'source',
+            'newValue',
+            sourceString.value,
+            userId,
+          );
         }
       }
     })();
@@ -569,12 +608,18 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return Promise.resolve();
   }
 
-  getDocumentStrings(documentName: string, languageCode: string): Promise<ITranslatedDocument | ISourceDocument> {
-    const results = languageCode === 'source'
-      ? this.getSourceStringsDocumentStatement.all(documentName)
-      : this.getTranslatedStringsDocumentStatement.all(languageCode, documentName);
+  getDocumentStrings(
+    documentName: string,
+    languageCode: string,
+  ): Promise<ITranslatedDocument | ISourceDocument> {
+    const results =
+      languageCode === 'source'
+        ? this.getSourceStringsDocumentStatement.all(documentName)
+        : this.getTranslatedStringsDocumentStatement.all(languageCode, documentName);
 
-    return Promise.resolve(results.map(r => parseRawDBString(r)) as ITranslatedDocument | ISourceDocument);
+    return Promise.resolve(
+      results.map((r) => parseRawDBString(r)) as ITranslatedDocument | ISourceDocument,
+    );
   }
 
   getDocuments() {
@@ -582,7 +627,7 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   }
 
   getLanguageCodes() {
-    return Promise.resolve(this.getLanguageCodesStatement.all().map(r => r.languageCode));
+    return Promise.resolve(this.getLanguageCodesStatement.all().map((r) => r.languageCode));
   }
 
   updateTranslation(sourceStringId: number, languageCode: string, value: string, userId: number) {
@@ -594,25 +639,46 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
     return Promise.resolve();
   }
 
-  getStringsNeedingTranslation(languageCode: string, limit?: number, sourceStringIdOffset?: number): Promise<Array<ISourceString & { id: number }>> {
-    const results = this.getStringsNeedingTranslationStatement.all({ languageCode, sourceStringIdOffset, limit });
+  getStringsNeedingTranslation(
+    languageCode: string,
+    limit?: number,
+    sourceStringIdOffset?: number,
+  ): Promise<Array<ISourceString & { id: number }>> {
+    const results = this.getStringsNeedingTranslationStatement.all({
+      languageCode,
+      sourceStringIdOffset,
+      limit,
+    });
+    return Promise.resolve(results.map((r) => parseRawDBString(r)) as any);
+  }
+
+  getTranslatedStrings(
+    languageCode: string,
+    limit?: number,
+    sourceStringIdOffset?: number,
+  ): Promise<Array<ISourceString & { id: number }>> {
+    const results = this.getTranslatedStringsStatement.all({
+      languageCode,
+      sourceStringIdOffset,
+      limit,
+    });
+    return Promise.resolve(results.map((r) => parseRawDBString(r)) as any);
+  }
+
+  getUsers(options: { role?: Role; limit?: number }): Promise<ISensitiveUser[]> {
     return Promise.resolve(
-      results.map((r) => parseRawDBString(r)) as any
+      this.getUsersStatement.all({ role: options.role, limit: options.limit }),
     );
   }
 
-  getTranslatedStrings(languageCode: string, limit?: number, sourceStringIdOffset?: number): Promise<Array<ISourceString & { id: number }>> {
-    const results = this.getTranslatedStringsStatement.all({ languageCode, sourceStringIdOffset, limit });
-    return Promise.resolve(
-      results.map((r) => parseRawDBString(r)) as any
-    );
-  }
-
-  getUsersByRole(role: Role, limit?: number) {
-    return Promise.resolve(this.getUsersByRoleStatement.all({ role, limit }));
-  }
-
-  getStringHistory(options: { limit?: number | undefined; sourceStringId?: number | undefined; languageCode?: string | undefined; historyIdOffset?: number | undefined } = {}): Promise<IStringHistory[]> {
+  getStringHistory(
+    options: {
+      limit?: number | undefined;
+      sourceStringId?: number | undefined;
+      languageCode?: string | undefined;
+      historyIdOffset?: number | undefined;
+    } = {},
+  ): Promise<IStringHistory[]> {
     const { sourceStringId, languageCode, historyIdOffset, limit } = options;
 
     return Promise.resolve(
@@ -620,20 +686,23 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
         sourceStringId,
         limit,
         languageCode,
-        historyIdOffset
+        historyIdOffset,
       }),
     );
   }
 
   moveDocument(fromName: string, toName: string) {
     const existingDocuments = this.getDocumentNamesStatement.all();
-    
-    if (existingDocuments.some(d => d.name === toName)) {
+
+    if (existingDocuments.some((d) => d.name === toName)) {
       throw new ConflictError('DOCUMENT_EXISTS', 'A document with the target name already exists.');
     }
 
-    if (!existingDocuments.some(d => d.name === fromName)) {
-      throw new NotFoundError('DOCUMENT_NOT_FOUND', 'A document with the source name does not exist.');
+    if (!existingDocuments.some((d) => d.name === fromName)) {
+      throw new NotFoundError(
+        'DOCUMENT_NOT_FOUND',
+        'A document with the source name does not exist.',
+      );
     }
 
     this.moveDocumentStatement.run(toName, fromName);
@@ -643,8 +712,11 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
   deleteDocument(documentName: string) {
     const existingDocuments = this.getDocumentNamesStatement.all();
 
-    if (!existingDocuments.some(d => d.name === documentName)) {
-      throw new NotFoundError('DOCUMENT_NOT_FOUND', 'A document with the source name does not exist.');
+    if (!existingDocuments.some((d) => d.name === documentName)) {
+      throw new NotFoundError(
+        'DOCUMENT_NOT_FOUND',
+        'A document with the source name does not exist.',
+      );
     }
 
     this.deleteDocumentStatement.run(documentName);

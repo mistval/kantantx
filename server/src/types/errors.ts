@@ -2,7 +2,7 @@ export class ApiError extends Error {
   constructor(
     public readonly code: string,
     public readonly httpStatus: number,
-    public readonly details?: string
+    public readonly details?: string,
   ) {
     super(`APIError ${httpStatus} ${code}: ${details}`);
   }

@@ -14,7 +14,11 @@ export function adminOnly(req: express.Request, _: express.Response, next: expre
   }
 }
 
-export function checkTranslatorLanguage(req: express.Request, _: express.Response, next: express.NextFunction) {
+export function checkTranslatorLanguage(
+  req: express.Request,
+  _: express.Response,
+  next: express.NextFunction,
+) {
   assertIsAuthenticatedRequest(req);
 
   if (req.user.role === Role.ADMIN) {
@@ -27,7 +31,12 @@ export function checkTranslatorLanguage(req: express.Request, _: express.Respons
       return next();
     }
 
-    return next(new ForbiddenError('NOT_TRANSLATOR_FOR_LANGUAGE', 'You must be a translator for this language to access this resource.'));
+    return next(
+      new ForbiddenError(
+        'NOT_TRANSLATOR_FOR_LANGUAGE',
+        'You must be a translator for this language to access this resource.',
+      ),
+    );
   }
 
   assert.fail(`Unknown role: ${req.user.role}`);
