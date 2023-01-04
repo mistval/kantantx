@@ -48,7 +48,7 @@ async function main() {
   const app = express();
   app.use(morgan('combined'));
   app.use(cookieParser());
-  app.use(express.json());
+  app.use(express.json({ limit: '100mb' }));
 
   const validator = createValidator();
 

@@ -207,6 +207,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
           sourceStringId = source_strings.id
           AND
           source_strings.softDeleted = FALSE
+          AND
+          source_string_additional_fields.softDeleted = FALSE
       ) AS additionalFields
     FROM source_strings
     WHERE
@@ -267,12 +269,16 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
           sourceStringId = source_strings.id
           AND
           source_strings.softDeleted = FALSE
+          AND
+          source_string_additional_fields.softDeleted = FALSE
       ) AS additionalFields
     FROM source_strings
-    JOIN documents
+    INNER JOIN documents
     ON documents.id = source_strings.documentId
-    WHERE documents.name = ?
-    AND source_strings.softDeleted = FALSE
+    WHERE
+      documents.name = ?
+      AND
+      source_strings.softDeleted = FALSE
     ORDER BY source_strings.stringOrder ASC;
   `);
 
@@ -309,6 +315,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
           sourceStringId = source_strings.id
           AND
           source_strings.softDeleted = FALSE
+          AND
+          source_string_additional_fields.softDeleted = FALSE
       ) AS additionalFields
     FROM source_strings
     LEFT JOIN translated_strings
@@ -349,6 +357,8 @@ export class BetterSQLite3Database implements IDatabaseAdapter {
           sourceStringId = source_strings.id
           AND
           source_strings.softDeleted = FALSE
+          AND
+          source_string_additional_fields.softDeleted = FALSE
       ) AS additionalFields
     FROM source_strings
     LEFT JOIN translated_strings
